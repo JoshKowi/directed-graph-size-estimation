@@ -2,9 +2,10 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Erzeugt | 2026-08-25 17:55 |
+| Daten vom | 2026-08-25 17:55 |
 |---|---|
-| Code-Fingerabdruck | `10e96512695f` |
+| Code-Fingerabdruck | `cc580e07a75d` |
+| Git | `9737035-dirty` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -72,10 +73,22 @@ WIS with random walk (history) -- directed vs undirected
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
 
-## `saved/`
+## `saved/` -- die versionierten Meilensteine
 
-Von Hand abgelegte Kopien fuer Praesentationen. Sie werden **nicht**
-neu erzeugt und koennen aus einer aelteren Codeversion stammen --
-im Zweifel gegen die Dateien oben pruefen.
+Die Dateien oben werden bei jedem Plot-Lauf neu erzeugt und sind
+**nicht** im Repository -- sonst laege dort nach jedem Durchlauf eine
+weitere vollstaendige Kopie jedes Bildes. Was einen Meilenstein
+festhaelt oder in eine Praesentation geht, wird bewusst nach `saved/`
+kopiert; nur dieser Ordner ist versioniert.
+
+```bash
+cp data/plots/<name>.png data/plots/saved/
+git add data/plots/saved && git commit -m "Meilenstein: ..."
+```
+
+Kopien in `saved/` werden nie ueberschrieben und koennen daher aus
+einer aelteren Codeversion stammen -- im Zweifel gegen die Dateien
+oben pruefen und gegen den Commit, der sie hinzugefuegt hat
+(`git log -- data/plots/saved/<name>.png`).
 
 - `Slashdot0811__wis_rw_history__views.png`

@@ -55,14 +55,28 @@ def git_revision() -> str | None:
         return None
 
 
-def _header(title: str) -> str:
+def _data_timestamp(directory: Path) -> str:
+    """Alter der juengsten beschriebenen Datei -- *nicht* "jetzt".
+
+    Bewusst kein Erzeugungszeitpunkt: sonst aenderte sich die README bei jedem
+    Lauf, das Repo waere dauerhaft dirty und `git describe --dirty` verlore
+    seine Aussage. So bleibt die Datei byte-identisch, solange sich an den
+    Daten nichts geaendert hat.
+    """
+    files = [p for p in directory.iterdir() if p.is_file() and p.name != "README.md"]
+    if not files:
+        return "-"
+    return datetime.fromtimestamp(max(p.stat().st_mtime for p in files)).strftime("%Y-%m-%d %H:%M")
+
+
+def _header(title: str, directory: Path) -> str:
     rev = git_revision()
     lines = [
         f"# {title}",
         "",
         "*Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*",
         "",
-        f"| Erzeugt | {datetime.now().strftime('%Y-%m-%d %H:%M')} |",
+        f"| Daten vom | {_data_timestamp(directory)} |",
         "|---|---|",
         f"| Code-Fingerabdruck | `{code_fingerprint()}` |",
     ]
@@ -86,7 +100,10 @@ def _header(title: str) -> str:
 def _results_readme() -> str:
     import pandas as pd
 
-    parts = [_header("data/results -- Rohergebnisse"), "## Dateien", ""]
+    parts = [_header("data/results -- Rohergebnisse", config.RESULTS_DIR),
+             "Die CSVs selbst sind **nicht** im Repository (gross und aus dem Code",
+             "reproduzierbar) -- diese Datei haelt fest, woher sie stammen.",
+             "", "## Dateien", ""]
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
         graph, _, kind = path.stem.partition("__")
         parts.append(f"### `{path.name}`")
@@ -160,7 +177,7 @@ def _plots_readme() -> str:
 
     specs = {slug: (ests, views, title) for slug, ests, views, title in FIGURES}
     parts = [
-        _header("data/plots -- erzeugte Grafiken"),
+        _header("data/plots -- erzeugte Grafiken", config.PLOTS_DIR),
         "Jede Grafik zeigt pro Estimator und Budget die Spanne min..max ueber die",
         "Laeufe plus den Median, y = Schaetzung/|V| (log), gestrichelt die wahre",
         "Groesse bei 1.0. Die x-Achse nennt das Budget relativ und absolut.",
@@ -196,16 +213,28 @@ def _plots_readme() -> str:
                       "von Hand oder mit einer aelteren Codeversion erzeugt.", ""]
 
     saved = config.PLOTS_DIR / "saved"
+    parts += [
+        "## `saved/` -- die versionierten Meilensteine",
+        "",
+        "Die Dateien oben werden bei jedem Plot-Lauf neu erzeugt und sind",
+        "**nicht** im Repository -- sonst laege dort nach jedem Durchlauf eine",
+        "weitere vollstaendige Kopie jedes Bildes. Was einen Meilenstein",
+        "festhaelt oder in eine Praesentation geht, wird bewusst nach `saved/`",
+        "kopiert; nur dieser Ordner ist versioniert.",
+        "",
+        "```bash",
+        "cp data/plots/<name>.png data/plots/saved/",
+        "git add data/plots/saved && git commit -m \"Meilenstein: ...\"",
+        "```",
+        "",
+        "Kopien in `saved/` werden nie ueberschrieben und koennen daher aus",
+        "einer aelteren Codeversion stammen -- im Zweifel gegen die Dateien",
+        "oben pruefen und gegen den Commit, der sie hinzugefuegt hat",
+        "(`git log -- data/plots/saved/<name>.png`).",
+        "",
+    ]
     if saved.is_dir():
-        files = sorted(p.name for p in saved.glob("*"))
-        parts += [
-            "## `saved/`",
-            "",
-            "Von Hand abgelegte Kopien fuer Praesentationen. Sie werden **nicht**",
-            "neu erzeugt und koennen aus einer aelteren Codeversion stammen --",
-            "im Zweifel gegen die Dateien oben pruefen.",
-            "",
-        ] + [f"- `{f}`" for f in files] + [""]
+        parts += [f"- `{p.name}`" for p in sorted(saved.glob("*"))] + [""]
     return "\n".join(parts)
 
 

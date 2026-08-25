@@ -2,9 +2,10 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Erzeugt | 2026-08-25 17:55 |
+| Daten vom | 2026-08-25 17:49 |
 |---|---|
-| Code-Fingerabdruck | `10e96512695f` |
+| Code-Fingerabdruck | `cc580e07a75d` |
+| Git | `9737035-dirty` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -13,6 +14,9 @@
 
 Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei
 Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.
+
+Die CSVs selbst sind **nicht** im Repository (gross und aus dem Code
+reproduzierbar) -- diese Datei haelt fest, woher sie stammen.
 
 ## Dateien
 

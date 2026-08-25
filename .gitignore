@@ -4,10 +4,17 @@ __pycache__/
 adjacencies/*.pkl
 
 # Rohergebnisse: gross (Slashdot0811__visits.csv allein ~90 MB) und aus dem
-# Code jederzeit reproduzierbar. Die erzeugte README bleibt drin -- sie
-# dokumentiert, welcher Befehl und welche Codeversion die CSVs erzeugt hat.
+# Code jederzeit reproduzierbar. Die erzeugte README bleibt drin.
 data/results/*
 !data/results/README.md
+
+# Erzeugte Grafiken: entstehen bei jedem Plot-Lauf neu. Als Binaerdateien
+# legt Git jedes Mal eine vollstaendige Kopie an -- versioniert wird deshalb
+# nur, was bewusst nach data/plots/saved/ kopiert wurde (Meilensteine,
+# Praesentationen). Siehe data/plots/README.md.
+data/plots/*
+!data/plots/README.md
+!data/plots/saved/
 
 # Laufprotokolle der Hintergrundlaeufe
 data/*.log
