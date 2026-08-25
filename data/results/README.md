@@ -4,8 +4,7 @@
 
 | Daten vom | 2026-08-25 17:49 |
 |---|---|
-| Code-Fingerabdruck | `db083ea2ade4` |
-| Git | `8529a3a-dirty` |
+| Code-Fingerabdruck | `ef0b29a24f26` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -14,6 +13,12 @@
 
 Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei
 Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.
+
+Der Commit steht bewusst *nicht* hier: eine versionierte Datei, die den
+aktuellen Commit nennt, kann nie stimmen -- beim Committen aendert sich
+genau der Hash, den sie angibt. Um den passenden Stand zu finden, einen
+Commit auschecken und `python Code/provenance.py` laufen lassen; stimmt
+der Fingerabdruck ueberein, ist es der richtige.
 
 Die CSVs selbst sind **nicht** im Repository (gross und aus dem Code
 reproduzierbar) -- diese Datei haelt fest, woher sie stammen.

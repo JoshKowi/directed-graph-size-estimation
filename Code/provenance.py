@@ -9,9 +9,14 @@ inkl. Pfadnamen). Er aendert sich bei jeder Codeaenderung und ist damit ein
 Ersatz-Versionsstempel, solange das Projekt nicht unter Versionskontrolle
 steht. Liegt ein Git-Repository vor, wird zusaetzlich der Commit ausgegeben.
 
+Der Commit landet bewusst nicht in den erzeugten Dateien: eine versionierte
+Datei, die den aktuellen Commit nennt, kann nie stimmen, weil das Committen
+genau diesen Hash aendert. `git_revision()` bleibt fuer den interaktiven
+Gebrauch erhalten.
+
 Schnittstelle:
     code_fingerprint() -> str          (12 Hex-Zeichen)
-    git_revision() -> str | None
+    git_revision() -> str | None       (nicht im README-Kopf, s.o.)
     write_readmes() -> list[Path]
 """
 
@@ -88,7 +93,6 @@ def _data_timestamp() -> str:
 
 
 def _header(title: str) -> str:
-    rev = git_revision()
     lines = [
         f"# {title}",
         "",
@@ -98,8 +102,6 @@ def _header(title: str) -> str:
         "|---|---|",
         f"| Code-Fingerabdruck | `{code_fingerprint()}` |",
     ]
-    if rev:
-        lines.append(f"| Git | `{rev}` |")
     lines += [
         f"| Budget-Metrik | `{config.DEFAULT_BUDGET_METRIC}` |",
         f"| Preise | random_node {config.COST_RANDOM_NODE}, neighbors "
@@ -110,6 +112,12 @@ def _header(title: str) -> str:
         "",
         "Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei",
         "Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.",
+        "",
+        "Der Commit steht bewusst *nicht* hier: eine versionierte Datei, die den",
+        "aktuellen Commit nennt, kann nie stimmen -- beim Committen aendert sich",
+        "genau der Hash, den sie angibt. Um den passenden Stand zu finden, einen",
+        "Commit auschecken und `python Code/provenance.py` laufen lassen; stimmt",
+        "der Fingerabdruck ueberein, ist es der richtige.",
         "",
     ]
     return "\n".join(lines)
