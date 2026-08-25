@@ -46,37 +46,55 @@ def code_fingerprint() -> str:
     return h.hexdigest()[:12]
 
 
-def git_revision() -> str | None:
+def _git(*args: str) -> str | None:
     try:
-        out = subprocess.run(["git", "-C", str(CODE_DIR), "describe", "--always", "--dirty"],
+        out = subprocess.run(["git", "-C", str(CODE_DIR), *args],
                              capture_output=True, text=True, timeout=5)
-        return out.stdout.strip() or None if out.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
+    return out.stdout.strip() if out.returncode == 0 else None
 
 
-def _data_timestamp(directory: Path) -> str:
-    """Alter der juengsten beschriebenen Datei -- *nicht* "jetzt".
+def git_revision() -> str | None:
+    """Commit, mit "-dirty" bei uncommitteten Aenderungen.
 
-    Bewusst kein Erzeugungszeitpunkt: sonst aenderte sich die README bei jedem
-    Lauf, das Repo waere dauerhaft dirty und `git describe --dirty` verlore
-    seine Aussage. So bleibt die Datei byte-identisch, solange sich an den
-    Daten nichts geaendert hat.
+    Die von hier erzeugten READMEs sind von der Dirty-Pruefung ausgenommen --
+    sonst waere die Angabe selbstbezueglich: das Schreiben der README machte
+    das Repo schmutzig, die naechste README meldete "dirty", das Committen
+    machte sie sauber, und der Wert pendelte bei jedem Lauf hin und her.
+    Gemeint ist ohnehin: gab es *sonst* etwas Uncommittetes?
     """
-    files = [p for p in directory.iterdir() if p.is_file() and p.name != "README.md"]
+    rev = _git("rev-parse", "--short", "HEAD")
+    if rev is None:
+        return None
+    status = _git("status", "--porcelain", "--", ".", ":!*/README.md") or ""
+    return f"{rev}-dirty" if status.strip() else rev
+
+
+def _data_timestamp() -> str:
+    """Wann die zugrunde liegenden Ergebnisse gerechnet wurden.
+
+    Bewusst weder "jetzt" noch das Alter der Bilder: beides aenderte sich bei
+    jedem Lauf, die README waere staendig geaendert und das Repo dauerhaft
+    dirty. Massgeblich sind die CSVs -- die Grafiken sind daraus abgeleitet,
+    ein Neuzeichnen derselben Daten ist keine neue Information.
+    """
+    if not config.RESULTS_DIR.is_dir():
+        return "-"
+    files = [p for p in config.RESULTS_DIR.glob("*.csv")]
     if not files:
         return "-"
     return datetime.fromtimestamp(max(p.stat().st_mtime for p in files)).strftime("%Y-%m-%d %H:%M")
 
 
-def _header(title: str, directory: Path) -> str:
+def _header(title: str) -> str:
     rev = git_revision()
     lines = [
         f"# {title}",
         "",
         "*Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*",
         "",
-        f"| Daten vom | {_data_timestamp(directory)} |",
+        f"| Daten vom | {_data_timestamp()} |",
         "|---|---|",
         f"| Code-Fingerabdruck | `{code_fingerprint()}` |",
     ]
@@ -100,7 +118,7 @@ def _header(title: str, directory: Path) -> str:
 def _results_readme() -> str:
     import pandas as pd
 
-    parts = [_header("data/results -- Rohergebnisse", config.RESULTS_DIR),
+    parts = [_header("data/results -- Rohergebnisse"),
              "Die CSVs selbst sind **nicht** im Repository (gross und aus dem Code",
              "reproduzierbar) -- diese Datei haelt fest, woher sie stammen.",
              "", "## Dateien", ""]
@@ -177,7 +195,7 @@ def _plots_readme() -> str:
 
     specs = {slug: (ests, views, title) for slug, ests, views, title in FIGURES}
     parts = [
-        _header("data/plots -- erzeugte Grafiken", config.PLOTS_DIR),
+        _header("data/plots -- erzeugte Grafiken"),
         "Jede Grafik zeigt pro Estimator und Budget die Spanne min..max ueber die",
         "Laeufe plus den Median, y = Schaetzung/|V| (log), gestrichelt die wahre",
         "Groesse bei 1.0. Die x-Achse nennt das Budget relativ und absolut.",
