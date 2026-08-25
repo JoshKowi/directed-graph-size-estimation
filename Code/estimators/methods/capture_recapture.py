@@ -52,8 +52,13 @@ class CaptureRecaptureEstimator(Estimator):
         visits: Counter = Counter()
         for o in oracles:
             visits.update(o.visits)
-        cost = {k: sum(o.cost()[k] for o in oracles) for k in oracles[0].cost()}
+        # nur die Zaehler addieren -- stopped_by ist ein Text und wird
+        # zusammengefasst (beide Walks enden normalerweise am Budget).
+        counters = [k for k, v in oracles[0].cost().items() if not isinstance(v, str)]
+        cost = {k: sum(o.cost()[k] for o in oracles) for k in counters}
         cost["unique_nodes"] = len(visits)  # ueber beide Walks zusammen
+        reasons = {o.stopped_by for o in oracles if o.stopped_by}
+        cost["stopped_by"] = "+".join(sorted(reasons)) if reasons else None
 
         return EstimateResult(
             value=value,

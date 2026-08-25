@@ -73,8 +73,8 @@ class RandomWalkSampler(Sampler):
         v = nbrs[rng.randrange(len(nbrs))]
         if self.allow_self_loops or v != u:
             return v
-        others = [x for x in nbrs if x != u]
-        return others[rng.randrange(len(others))] if others else None
+        others = nbrs[nbrs != u]
+        return others[rng.randrange(len(others))] if len(others) else None
 
     def sample(self, oracle) -> list[Sample]:
         trace: list[Sample] = []
@@ -90,7 +90,7 @@ class RandomWalkSampler(Sampler):
                     trace.append(Sample(u, len(nbrs), step))
                 step += 1
 
-                nxt = self._step(u, nbrs, oracle.rng) if nbrs else None
+                nxt = self._step(u, nbrs, oracle.rng) if len(nbrs) else None
                 if nxt is None:
                     u = self.dead_end.next_node(oracle, path, trace, start)
                 elif self.restart_prob and oracle.rng.random() < self.restart_prob:

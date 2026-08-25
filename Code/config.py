@@ -17,10 +17,23 @@ RESULTS_DIR = ROOT / "data" / "results"
 PLOTS_DIR = ROOT / "data" / "plots"
 
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
+# Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
 
 # Wiederholungen je (Estimator, Budget).
 DEFAULT_N_RUNS = 10
+
+# Ab dieser Knotenzahl gilt ein Graph als gross: dort faellt das 20-%-Budget
+# weg. Grund ist reine Rechenzeit -- auf Slashdot0811 entfallen 63 % aller
+# Walk-Schritte allein auf dieses eine Budget, und die Kosten skalieren mit
+# |V|. Mit --budgets laesst es sich jederzeit wieder anfordern.
+LARGE_GRAPH_NODES = 1_000_000
+DEFAULT_BUDGETS_LARGE = (0.001, 0.005, 0.01, 0.05, 0.10)
+
+# Prozesse fuer die (Budget, Estimator, Lauf)-Schleife. Der Graph wird dabei
+# nicht kopiert (siehe experiment.runner), zusaetzlicher Speicher faellt also
+# kaum an. 1 = sequentiell.
+DEFAULT_N_JOBS = 8
 
 DEFAULT_SEED = 42
 

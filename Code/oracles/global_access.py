@@ -106,9 +106,11 @@ class ShortWalkIndependentOracle(Oracle):
             tried: list[set] = [set()]      # je Pfadposition die schon probierten Zweige
             while len(path) <= self.steps:
                 u = path[-1]
-                options = [v for v in self.graph.neighbors(u)
-                           if v not in tried[-1] and (self.allow_self_loops or v != u)]
-                if not options:
+                nbrs = self.graph.neighbors(u)
+                if not self.allow_self_loops:
+                    nbrs = nbrs[nbrs != u]
+                options = [v for v in nbrs if v not in tried[-1]] if tried[-1] else nbrs
+                if not len(options):
                     if len(path) == 1:
                         break               # Startknoten ist selbst Sackgasse
                     dead = path.pop()

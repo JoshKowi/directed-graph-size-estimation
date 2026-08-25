@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-25 17:49 |
+| Daten vom | 2026-08-25 18:30 |
 |---|---|
-| Code-Fingerabdruck | `ef0b29a24f26` |
+| Code-Fingerabdruck | `e4a4234b2963` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -27,20 +27,20 @@ reproduzierbar) -- diese Datei haelt fest, woher sie stammen.
 
 ### `Slashdot0811__estimates.csv`
 
-Schaetzungen fuer **Slashdot0811**, 1 200 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **Slashdot0811**, 60 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: directed, undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 (relativ zu |V| = 77 360)
+- Views: directed
+- Budgets: 0.01, 0.05 (relativ zu |V| = 77 360)
 - Laeufe je Punkt: 10
-- Estimators: rw_plain__backtrack__none, rw_plain__history__none, rw_plain__restart__none, uis__walk5, uniform_collision, wis-katzir__indep, wis-katzir__rw-backtrack, wis-katzir__rw-history, wis-katzir__rw-restart, wis-katzir__walk5
-- Abbruchgrund: {'budget': 1200}
+- Estimators: uniform_collision, wis-katzir__indep, wis-katzir__rw-restart
+- Abbruchgrund: {'budget': 60}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs Slashdot0811 \
-    --estimators rw_plain__backtrack__none rw_plain__history__none rw_plain__restart__none uis__walk5 uniform_collision wis-katzir__indep wis-katzir__rw-backtrack wis-katzir__rw-history wis-katzir__rw-restart wis-katzir__walk5 \
-    --views directed undirected
+    --estimators uniform_collision wis-katzir__indep wis-katzir__rw-restart \
+    --views directed
 ```
 
 ### `Slashdot0811__view_comparison.csv`

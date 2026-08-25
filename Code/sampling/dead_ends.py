@@ -76,8 +76,12 @@ class Backtrack(DeadEndStrategy):
         while len(path) >= 2:
             child = path.pop()          # die Sackgasse bzw. der schon genommene Zweig
             u = path[-1]
-            alternatives = [v for v in oracle.neighbors(u) if v != child]
-            if alternatives:
+            nbrs = oracle.neighbors(u)
+            # vektorisiert statt Python-Schleife: bei gpt4o_io haben ueber 50 %
+            # der Knoten keine ausgehenden Kanten, dieser Zweig laeuft also
+            # staendig.
+            alternatives = nbrs[nbrs != child]
+            if len(alternatives):
                 return alternatives[oracle.rng.randrange(len(alternatives))]
         path.clear()
         return start

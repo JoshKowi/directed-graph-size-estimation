@@ -28,7 +28,7 @@ Code/
   config.py             Pfade, Default-Budgets, n, Seed, Budget-Metrik
   run_experiment.py     CLI: Experiment ausfuehren
   plot_results.py       CLI: Plots erzeugen
-  graphs/               Graph-Wrapper (dict mit Original-Keys), Loader, Views
+  graphs/               Graph als CSR (Integer-IDs + Namensliste), Loader, Views
   oracles/              Graph-Zugriff mit Kostenzaehlung und Budget
     global_access.py      setzt Kenntnis von V voraus (gleichverteiltes Ziehen)
     local_access.py       nur Nachbarschaftsabfragen ab einem Seed
@@ -140,6 +140,30 @@ dasselbe Verfahren kann mit einem anderen Oracle in die andere Kategorie
 fallen. `estimators.build(name)` haengt das Label nach der Konstruktion an die
 Instanz; ein direkt konstruierter Estimator hat `category is None`.
 
+## Groesse und Laufzeit
+
+Beim Laden werden die Original-Schluessel (bei gpt4o_io Strings wie
+`'Vannevar Bush'`) einmal auf Integer-IDs 0..n-1 abgebildet; der Graph liegt
+danach als CSR in drei numpy-Arrays. `Graph.name_of(id)` und
+`Graph.id_of(name)` fuehren zurueck, und die Besuchs-CSV enthaelt wieder die
+Original-Namen. Das spart bei gpt4o_io den Grossteil von ~37 GB und ist
+Voraussetzung fuer die Parallelisierung: nur so uebersteht der Graph den
+`fork` ohne kopiert zu werden.
+
+**Parallelisierung.** `--jobs N` (Default in `config.DEFAULT_N_JOBS`) verteilt
+die (Budget, Estimator, Lauf)-Tripel einer View auf N Prozesse. Die Ergebnisse
+sind davon unabhaengig -- der Seed haengt nur an (Estimator, Budget, Lauf),
+nicht an der Ausfuehrungsreihenfolge; `--jobs 1` liefert dieselbe CSV.
+
+**Grosse Graphen.** Ab `config.LARGE_GRAPH_NODES` faellt das 20-%-Budget weg.
+Auf Slashdot0811 entfallen 63 % aller Walk-Schritte auf dieses eine Budget,
+und der Aufwand skaliert mit |V|. Mit `--budgets` laesst es sich erzwingen.
+
+Warum die Walks so viele Schritte machen: bei `COST_CACHE_HIT = 0.02` sind bis
+zu 50 Schritte je Budget-Einheit moeglich, und auf gerichteten Graphen
+schoepfen die Random Walks das fast aus (Slashdot0811: Faktor 47). Auf
+symmetrisierten Sichten liegt der Faktor bei 1,3.
+
 ## Kosten und Budget
 
 Das Oracle kennt drei Zugriffsarten -- verschiedene Anfragen mit eigenen
@@ -196,10 +220,9 @@ Kosten), `unique_nodes_used` (Statistik), `cached_queries` sowie
 ## Bekannte Vereinfachungen
 
 - |V| = alle vorkommenden Knoten, also die Eintraege der Adjazenzliste **plus**
-  die Knoten, die nur als Nachbar auftauchen (keine ausgehenden Kanten). Diese
-  werden nicht ins Adjazenz-dict eingefuegt -- die geladene Original-Struktur
-  bleibt unveraendert, sie stehen nur in `Graph.nodes` und haben ueber
-  `.get(u, ())` automatisch Grad 0. Die .pkl-Dateien werden nie geschrieben.
+  die Knoten, die nur als Nachbar auftauchen (keine ausgehenden Kanten). Als
+  CSR brauchen sie keinen Sonderfall: sie haben `indptr[u] == indptr[u+1]` und
+  damit Grad 0. Die .pkl-Dateien werden nie geschrieben.
 - Der Random Walk unterstellt pi(u) ~ deg(u); das gilt streng nur ungerichtet.
   Ueber `--views undirected` laesst sich der Effekt messen.
 - Der Collision-Schaetzer unterstellt *unabhaengige* Samples aus pi. Ein Random
