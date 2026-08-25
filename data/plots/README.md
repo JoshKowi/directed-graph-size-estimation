@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-25 18:30 |
+| Daten vom | 2026-08-25 18:39 |
 |---|---|
-| Code-Fingerabdruck | `e4a4234b2963` |
+| Code-Fingerabdruck | `6d0bf589aecd` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |

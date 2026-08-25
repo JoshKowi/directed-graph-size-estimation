@@ -36,6 +36,18 @@ class DegWeightedIndependentOracle(Oracle):
     Graphen im Grenzwert erreicht, aber ohne Abhaengigkeit zwischen
     aufeinanderfolgenden Samples.
 
+    **Auf gerichteten Graphen sieht dieses Oracle einen Teil der Knoten nie.**
+    Gezogen wird mit P(v) ~ deg_out(v); Knoten ohne ausgehende Kanten haben
+    P(v) = 0 und koennen prinzipiell nicht als Sample auftreten. Der Schaetzer
+    schaetzt dann korrekt die Groesse von {v : deg_out(v) > 0} -- nicht |V|.
+
+    Bei gpt4o_io ist das die Haelfte des Graphen: 2 657 109 von 5 693 001
+    Knoten haben ausgehende Kanten, Anteil 0.4667. Gemessen liefert
+    wis-katzir__indep dort ueber alle Budgets stabil 0.4635 x |V|. Auf
+    Slashdot0811 faellt es nicht auf (0,06 % Knoten ohne Ausgangskanten), auf
+    der symmetrisierten Sicht ebenfalls nicht (dort hat jeder erreichte Knoten
+    mindestens die Rueckkante).
+
     ACHTUNG, frueherer Fehler: hier stand "gleichverteiltes u, dann
     gleichverteilter Nachbar von u". Das liefert
     P(v) = (1/N) * sum_{u->v} 1/deg(u) -- das Freundschaftsparadox, *nicht*

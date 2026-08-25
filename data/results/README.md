@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-25 18:30 |
+| Daten vom | 2026-08-25 18:39 |
 |---|---|
-| Code-Fingerabdruck | `e4a4234b2963` |
+| Code-Fingerabdruck | `6d0bf589aecd` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -53,22 +53,25 @@ Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot0811**, 1 614 636 Z
 
 ### `gpt4o_io__estimates.csv`
 
-Schaetzungen fuer **gpt4o_io**, 960 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **gpt4o_io**, 200 Zeilen (= Estimator x View x Budget x Lauf).
 
 - Views: directed, undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 (relativ zu |V| = 5 693 001)
+- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
 - Laeufe je Punkt: 10
-- Estimators: rw_plain__backtrack__none, rw_plain__history__none, rw_plain__restart__none, uniform_collision, wis-katzir__indep, wis-katzir__rw-backtrack, wis-katzir__rw-history, wis-katzir__rw-restart
-
-> **Veraltet.** Es fehlen die Spalten `stopped_by`, die der aktuelle Code schreibt. Diese Datei stammt aus einer frueheren Codeversion und ist mit den uebrigen Ergebnissen nicht vergleichbar -- neu rechnen.
+- Estimators: uniform_collision, wis-katzir__rw-history
+- Abbruchgrund: {'budget': 200}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4o_io \
-    --estimators rw_plain__backtrack__none rw_plain__history__none rw_plain__restart__none uniform_collision wis-katzir__indep wis-katzir__rw-backtrack wis-katzir__rw-history wis-katzir__rw-restart \
+    --estimators uniform_collision wis-katzir__rw-history \
     --views directed undirected
 ```
+
+### `gpt4o_io__visits.csv`
+
+Besuchshaeufigkeit je Original-Knotenname fuer **gpt4o_io**, 13 731 046 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ## Spalten der `__estimates.csv`
 

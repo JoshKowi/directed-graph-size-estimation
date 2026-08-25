@@ -41,6 +41,11 @@ from estimators.base import Estimator
 from graphs.graph import Graph
 from graphs.views import build_view
 
+
+def _n(x) -> str:
+    """Zahl mit schmalem Leerzeichen als Tausendertrenner."""
+    return f"{int(x):,}".replace(",", "\u2009")
+
 # Wird vor dem Fork gesetzt und von den Kindprozessen geerbt -- so muss der
 # Graph nie durch einen Pickle-Kanal.
 _VIEW: Graph | None = None
@@ -94,7 +99,7 @@ def run_graph(
         view = build_view(graph, view_name)
         true_size = view.n_nodes
         log(f"[{graph.name}/{view_name}] View gebaut in {time.perf_counter()-t0:.1f}s "
-            f"-- |V|={true_size:,}, Kanten={view.n_edges:,}".replace(",", " "))
+            f"-- |V|={_n(true_size)}, Kanten={_n(view.n_edges)}")
 
         tasks = [
             (b, max(int(round(b * true_size)), 2), est.name, str(est.category), run, seed)
@@ -131,9 +136,8 @@ def run_graph(
                 elapsed = time.perf_counter() - t_view
                 eta = elapsed / done * (expected - done)
                 log(f"  [{done:>3}/{expected}] {key[1]:<26} b={key[0]:<6g} "
-                    f"est/|V|={med / true_size:8.4f}  Schritte={steps:>10,}  "
-                    f"{secs:7.1f}s CPU  |  {elapsed/60:5.1f} min, Rest ~{eta/60:.0f} min"
-                    .replace(",", " "))
+                    f"est/|V|={med / true_size:8.4f}  Schritte={_n(steps):>12}  "
+                    f"{secs:7.1f}s CPU  |  {elapsed/60:5.1f} min, Rest ~{eta/60:.0f} min")
 
         gc.freeze()          # bestehende Objekte aus der GC nehmen -> CoW bleibt heil
         if n_jobs > 1:
