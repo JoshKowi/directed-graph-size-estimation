@@ -1,5 +1,13 @@
 __pycache__/
 *.pyc
-data/
 .venv/
 adjacencies/*.pkl
+
+# Rohergebnisse: gross (Slashdot0811__visits.csv allein ~90 MB) und aus dem
+# Code jederzeit reproduzierbar. Die erzeugte README bleibt drin -- sie
+# dokumentiert, welcher Befehl und welche Codeversion die CSVs erzeugt hat.
+data/results/*
+!data/results/README.md
+
+# Laufprotokolle der Hintergrundlaeufe
+data/*.log
