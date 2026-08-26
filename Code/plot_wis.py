@@ -90,6 +90,11 @@ def main() -> None:
         for seed in results_io.seeds_available(df) or [config.DEFAULT_SEED]:
             summary = results_io.summarize(df[df["seed"] == seed])
             tag = results_io.seed_tag(seed)
+            # Genestete Budgets gehoeren ins Bild: die Punkte einer Zeile sind
+            # dann nicht unabhaengig voneinander (siehe experiment/runner.py).
+            note = f"seed {seed}"
+            if summary["nested"].any():
+                note += "  |  nested budgets"
             for slug, ests, views, title in FIGURES:
                 # Ein Bild, in dem nur die Referenz uebrig ist, zeigt nichts --
                 # das passiert, wenn ein Lauf nur einen Teil der Estimators oder
@@ -104,7 +109,7 @@ def main() -> None:
                     continue
                 path = config.PLOTS_DIR / f"{graph}__{tag}{slug}.png"
                 plot_comparison(summary, graph, ests, views, f"{graph}: {title}",
-                                path=path, colors=COLORS, note=f"seed {seed}")
+                                path=path, colors=COLORS, note=note)
                 print("  ->", path)
     for path in provenance.write_readmes():
         print("  ->", path)

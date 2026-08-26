@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 12:28 |
+| Daten vom | 2026-08-26 13:17 |
 |---|---|
-| Code-Fingerabdruck | `4a935e2c7569` |
+| Code-Fingerabdruck | `5eb27aba820c` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -91,6 +91,18 @@ WIS with random walk (history) -- directed vs undirected
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
 
+### `adjacency_list_uni__seed100__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 100): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 100` (`Code/diagnose_walk.py`).
+
+### `adjacency_list_uni__seed123__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 123): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 123` (`Code/diagnose_walk.py`).
+
+### `adjacency_list_uni__seed1__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 1): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 1` (`Code/diagnose_walk.py`).
+
 ### `adjacency_list_uni__walk_diagnosis.png`
 
 Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
@@ -140,4 +152,5 @@ oben pruefen und gegen den Commit, der sie hinzugefuegt hat
 (`git log -- data/plots/saved/<name>.png`).
 
 - `Slashdot0811__wis_rw_history__views.png`
-- `gpt4o_io__walk_diagnosis copy.png`
+- `gpt4o_io__walk_diagnosis-sink.png`
+- `gpt4o_io__walk_diagnosis-weights.png`

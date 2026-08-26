@@ -23,6 +23,7 @@ class UniformSampler(Sampler):
             while True:
                 u = oracle.random_node()
                 samples.append(Sample(u, oracle.degree(u), len(samples)))
+                oracle.mark()      # fuer Budget-Zwischenstaende, s. oracles.base
         except BudgetExceeded:
             return samples
 
@@ -88,6 +89,7 @@ class RandomWalkSampler(Sampler):
                 nbrs = oracle.neighbors(u)
                 if step >= self.burn_in:
                     trace.append(Sample(u, len(nbrs), step))
+                    oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
                 step += 1
 
                 nxt = self._step(u, nbrs, oracle.rng) if len(nbrs) else None

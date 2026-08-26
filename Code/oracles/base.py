@@ -44,6 +44,17 @@ ob ein darauf aufbauender Estimator real umsetzbar ist (siehe
 oracles.global_access / oracles.local_access). Die Kategorie selbst wird erst
 in estimators/__init__.py vergeben.
 
+Zwischenstaende (`checkpoints`): ein Lauf kann unterwegs festhalten, wie er bei
+einem *kleineren* Budget dagestanden haette. Das geht, weil kein Sampler das
+Budget kennt -- es steuert nur den Abbruch. Der Zustand bei Kosten b ist im
+langen Lauf damit derselbe wie am Ende eines eigenstaendigen Laufs mit Budget b
+(gleicher Zufallsstrom, gleicher Cache, gleiche Historie). Festgehalten wird
+beim *selben* Ereignis, das den kurzen Lauf beendet haette: bei der ersten
+Buchung, die b ueberschreiten wuerde. Siehe estimators/pipeline.py.
+
+Damit ein Zwischenstand die Stichprobe abschneiden kann, muss er wissen, wie
+viele Samples bis dahin entstanden sind -- das meldet der Sampler mit `mark()`.
+
 Schnittstelle:
     class BudgetExceeded(Exception)
     class Oracle
@@ -51,6 +62,7 @@ Schnittstelle:
         .cached_queries, .n_random_node, .n_neighbors, .stopped_by
         .cost() -> dict[str, int]
         .neighbors(u), .degree(u), .random_node(), .seed_nodes(k)
+        .mark(), .snapshots, .finalize_checkpoints()
 """
 
 from __future__ import annotations
@@ -76,6 +88,7 @@ class Oracle:
         budget: int,
         budget_metric: str = "queries",
         cache: set | None = None,
+        checkpoints=None,
         cost_random_node: float = config.COST_RANDOM_NODE,
         cost_neighbors: float = config.COST_NEIGHBORS,
         cost_cache_hit: float = config.COST_CACHE_HIT,
@@ -101,6 +114,12 @@ class Oracle:
                 "verbraucht bei jedem Zugriff Budget. unique_nodes steht "
                 "weiterhin als Statistik in cost()."
             )
+        # Kleinere Budgets, bei denen unterwegs ein Zwischenstand festgehalten
+        # wird (aufsteigend). Alles >= budget waere nie erreichbar.
+        self._pending = sorted(b for b in (checkpoints or ()) if b < budget)
+        self.snapshots: list[dict] = []
+        self._marks = 0
+
         self.visits: Counter = Counter()  # Original-Knotenname -> Anzahl Zugriffe
         # Knoten, deren Nachbarschaft bereits geholt wurde. Von aussen
         # uebergeben, wenn mehrere Crawler sich den Cache teilen sollen.
@@ -126,10 +145,40 @@ class Oracle:
             "stopped_by": self.stopped_by,
         }
 
+    # -- Zwischenstaende --------------------------------------------------
+    def mark(self) -> None:
+        """Ein Sample ist entstanden. Ruft der Sampler auf, sobald er es der
+        Stichprobe hinzugefuegt hat -- nur so kann ein Zwischenstand spaeter
+        sagen, wo die Stichprobe abzuschneiden ist."""
+        self._marks += 1
+
+    def _snapshot(self, budget_abs: int, stopped_by: str) -> None:
+        snap = self.cost()
+        snap["stopped_by"] = stopped_by
+        snap["budget_abs"] = budget_abs
+        snap["n_samples"] = self._marks
+        self.snapshots.append(snap)
+
+    def finalize_checkpoints(self) -> None:
+        """Noch offene Zwischenstaende nach Ende des Laufs schliessen.
+
+        Passiert, wenn der Lauf vor dem Budget endet (z.B. stopped_by
+        "no_path"). Ein eigenstaendiger Lauf mit dem kleineren Budget waere an
+        genau derselben Stelle mit demselben Grund gescheitert -- der
+        Zwischenstand ist also der Endzustand, nur mit dem kleineren Budget
+        im Protokoll.
+        """
+        while self._pending:
+            self._snapshot(self._pending.pop(0), self.stopped_by or "budget")
+
     # -- Buchhaltung ------------------------------------------------------
     def _charge(self, node, amount: float) -> None:
         """Bucht einen bezahlten Zugriff; prueft das Budget *vor* der Ausfuehrung."""
         queries = self.queries + amount
+        # Erst die Zwischenstaende: diese Buchung ist genau die, an der ein
+        # Lauf mit dem kleineren Budget abgebrochen waere.
+        while self._pending and queries > self._pending[0]:
+            self._snapshot(self._pending.pop(0), "budget")
         if queries > self.budget:
             self.stopped_by = "budget"
             raise BudgetExceeded(f"Budget {self.budget} ({self.budget_metric}) erschoepft")

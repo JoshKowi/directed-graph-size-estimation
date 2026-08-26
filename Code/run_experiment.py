@@ -16,6 +16,11 @@ Seed ist ein zweiter, gleichberechtigter Durchlauf desselben Experiments --
 so laesst sich pruefen, ob ein Ergebnis stabil ist oder am Zufall haengt. Er
 steht in jeder Ergebniszeile (Spalte `seed`), im Dateinamen (`__seed7__`,
 ausser beim Default) und auf jeder daraus erzeugten Grafik.
+
+`--checkpoint-budgets` liest alle Budgets aus einem einzigen Lauf ab, statt je
+Budget einen eigenen zu rechnen -- dieselben Zahlen bei rund 40 % weniger
+Rechenzeit, dafuer sind die Punkte eines Laufs ueber die Budgets genestet.
+Siehe experiment/runner.py und check_nested.py.
 """
 
 from __future__ import annotations
@@ -52,6 +57,12 @@ def main() -> None:
     p.add_argument("--jobs", type=int, default=config.DEFAULT_N_JOBS,
                    help="Parallele Prozesse je View (1 = sequentiell)")
     p.add_argument("--no-visits", action="store_true", help="Besuchsstatistik nicht speichern")
+    p.add_argument("--checkpoint-budgets", action="store_true",
+                   help="alle Budgets aus einem Lauf ablesen statt je Budget einen "
+                        "eigenen zu rechnen. Exakt dieselben Zahlen, spart "
+                        "Sigma(Budgets)/max(Budget) an Rechenzeit -- die Punkte "
+                        "eines Laufs sind danach aber genestet, nicht unabhaengig "
+                        "(Spalte `nested`).")
     args = p.parse_args()
 
     if args.list:
@@ -94,6 +105,7 @@ def main() -> None:
             views=args.views,
             collect_visits=not args.no_visits,
             n_jobs=args.jobs,
+            nested_budgets=args.checkpoint_budgets,
             log=lambda m: print(m, flush=True),
         )
         print("  ->", results_io.save_results(df, name, seed=args.seed))

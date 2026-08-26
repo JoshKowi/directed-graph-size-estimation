@@ -52,10 +52,13 @@ def main() -> None:
         summary = results_io.summarize(part)
         comparison = results_io.compare_views(part)
         tag = results_io.seed_tag(seed)
+        note = f"seed {seed}"
+        if summary["nested"].any():      # Punkte je Lauf dann korreliert
+            note += "  |  nested budgets"
         for name in args.graphs or sorted(summary["graph"].unique()):
             path = config.PLOTS_DIR / f"{name}__{tag}ranges.png"
             plot_ranges(summary[summary["graph"] == name], graph_name=name,
-                        path=path, note=f"seed {seed}")
+                        path=path, note=note)
             print("  ->", path)
             print("  ->", results_io.save_results(
                 comparison[comparison["graph"] == name], name,

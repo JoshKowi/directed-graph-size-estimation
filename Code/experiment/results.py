@@ -83,6 +83,8 @@ def load_results(graph_name: str | None = None, kind: str = "estimates",
         df = pd.read_csv(path)
         if "seed" not in df.columns:      # CSV aus einer Version vor --seed
             df["seed"] = s
+        if "nested" not in df.columns:    # ... bzw. vor --checkpoint-budgets
+            df["nested"] = False
         frames.append(df)
     if not frames:
         if graph_name is not None:
@@ -104,6 +106,8 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
     """Range der Schaetzungen je View, Estimator und Budget."""
     if "seed" not in df.columns:          # Frame aus einer Version vor --seed
         df = df.assign(seed=config.DEFAULT_SEED)
+    if "nested" not in df.columns:
+        df = df.assign(nested=False)
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
@@ -116,6 +120,9 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             est_median=("estimate", "median"),
             est_max=("estimate", "max"),
             true_size=("true_size", "first"),
+            # Genestet: die Punkte einer Laufnummer stammen aus einem Lauf und
+            # sind ueber die Budgets korreliert (siehe experiment/runner.py).
+            nested=("nested", "any"),
             # fuer die Achsenbeschriftung: erlaubtes und tatsaechlich
             # ausgegebenes Budget (siehe plotting.ranges.budget_ticks)
             budget_abs=("budget_abs", "first"),

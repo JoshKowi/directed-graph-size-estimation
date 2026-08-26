@@ -28,6 +28,7 @@ Code/
   config.py             Pfade, Default-Budgets, n, Seed, Budget-Metrik
   run_experiment.py     CLI: Experiment ausfuehren
   plot_results.py       CLI: Plots erzeugen
+  check_nested.py       CLI: genestete Budgets gegen Einzellaeufe pruefen
   graphs/               Graph als CSR (Integer-IDs + Namensliste), Loader, Views
   oracles/              Graph-Zugriff mit Kostenzaehlung und Budget
     global_access.py      setzt Kenntnis von V voraus (gleichverteiltes Ziehen)
@@ -111,6 +112,58 @@ zwei Dinge auf einmal misst.
 
 Innerhalb eines Laufs bleibt die Paarung erhalten (s.o.): der abgeleitete Strom
 haengt an (Seed, Estimator, Budget, Lauf), nicht an der View.
+
+## Alle Budgets aus einem Lauf: `--checkpoint-budgets`
+
+Statt je Budget einen eigenen Lauf zu rechnen, laeuft *ein* Lauf mit dem
+groessten Budget und haelt unterwegs fest, wo die kleineren geendet haetten.
+Die Stichprobe wird dort abgeschnitten und ganz normal geschaetzt.
+
+```bash
+python run_experiment.py --graphs Slashdot0811 --checkpoint-budgets
+python check_nested.py   --graph  Slashdot0811     # Aequivalenz nachrechnen
+```
+
+**Das ist exakt, nicht genaehert.** Kein Sampler kennt sein Budget -- es
+steuert nur den Abbruch. Der bei Kosten b abgeschnittene Lauf ist deshalb
+bitgleich mit einem eigenstaendigen Lauf desselben Zufallsstroms bei Budget b:
+gleicher Cache, gleiche Historie, gleicher Abbruchpunkt. `check_nested.py`
+rechnet das fuer alle Estimators und Views nach und vergleicht Schaetzwert,
+Kosten, Abbruchgrund und Sample-Zahl auf Gleichheit (nicht auf Toleranz).
+
+Was sich dadurch **nicht** aendert: die Verteilung je Budget. Ein Punkt bei 1 %
+bedeutet genau dasselbe wie vorher, Bias und Streuung inklusive.
+
+Was sich aendert: die Punkte einer Laufnummer sind ueber die Budgets
+**genestet**. Ein Walk, der bei 1 % feststeckt, steckt bei 10 % immer noch
+fest. Vergleiche *zwischen* Budgets werden dadurch gepaart und praeziser; die
+Zahl unabhaengiger Trajektorien im Experiment sinkt aber von
+`Laeufe x Budgets` auf `Laeufe`. Fuer Fragen der Art "wie oft landet ein Walk
+in einer Senke?" ist das der relevante Verlust. Die Ergebnis-CSV haelt es in
+der Spalte `nested` fest, die Grafiken vermerken es oben rechts.
+
+Ersparnis: theoretisch `Sigma(Budgets) / max(Budget)`, bei der Standardleiter
+also 1.66x -- aber nur fuer das *Ziehen*. Thinning und Formel laufen weiterhin
+je Budget (auf dem jeweiligen Praefix). Gemessen auf Slashdot0811, gerichtet,
+3 Estimators x 5 Budgets x 10 Laeufe, `--jobs 1`:
+
+| | Rechenzeit in den Estimators |
+|---|---|
+| je Budget ein Lauf | 13.9 s |
+| genestet | 10.7 s (**1.29x**) |
+
+Zwei Einschraenkungen:
+
+- `capture_recapture` teilt sein Budget vorab auf zwei Walks auf; ein Praefix
+  hat dort eine andere Struktur. Der Estimator laeuft in diesem Modus weiter
+  je Budget einzeln (der Runner erkennt das selbst).
+- Besuchszaehler entstehen nur fuer das groesste Budget -- sie sind kumulativ,
+  ein Zwischenstand muesste den ganzen Counter kopieren.
+
+Der abgeleitete Zufallsstrom haengt in diesem Modus an (Seed, Estimator, Lauf)
+statt an (Seed, Estimator, Budget, Lauf) -- es gibt ja nur noch einen Lauf.
+Ergebnisse beider Modi sind deshalb nicht Zeile fuer Zeile vergleichbar, wohl
+aber Verteilung gegen Verteilung.
 
 ## Neuen Estimator hinzufuegen
 

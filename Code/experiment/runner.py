@@ -12,6 +12,24 @@ Der uebergebene `seed` ist der Startpunkt aller dieser Stroeme. Mit einem
 anderen Seed bekommt man einen komplett anderen, gleichberechtigten Durchlauf
 desselben Experiments -- deshalb steht er in jeder Ergebniszeile.
 
+`nested_budgets=True` rechnet je (Estimator, Lauf) nur noch *einen* Lauf mit
+dem groessten Budget und liest die kleineren unterwegs ab (siehe
+estimators/pipeline.py). Das spart Sigma(Budgets)/max(Budget) an Rechenzeit --
+bei einer geometrischen Leiter also weniger als Faktor 2, weil das groesste
+Budget die Summe dominiert. Zwei Dinge aendern sich dadurch:
+
+  * Der abgeleitete Strom haengt dann nicht mehr am Budget (es gibt nur noch
+    einen Lauf), sondern nur an (Seed, Estimator, Lauf).
+  * Die Punkte einer Laufnummer sind ueber die Budgets *genestet*, nicht mehr
+    unabhaengig: ein Walk, der bei 1 % feststeckt, steckt bei 10 % immer noch
+    fest. Je Budget bleibt die Verteilung dieselbe -- die Zahl unabhaengiger
+    Trajektorien im Experiment sinkt aber von Laeufe x Budgets auf Laeufe.
+    Deshalb die Spalte `nested` in der Ergebnis-CSV.
+
+Estimators ohne `estimate_nested` (capture_recapture teilt sein Budget vorab
+auf zwei Walks auf, ein Praefix hat dort eine andere Struktur) laufen auch in
+diesem Modus weiter je Budget einzeln.
+
 Parallelisierung: die (Budget, Estimator, Lauf)-Tripel einer View sind
 vollstaendig unabhaengig -- gleicher Graph, nur lesend, eigener Seed. Sie
 laufen ueber einen Pool mit `fork`. Der Graph wird dabei *nicht* kopiert: er
@@ -26,7 +44,7 @@ Zeilen werden am Ende sortiert, damit auch die CSV reproduzierbar ist.
 
 Schnittstelle:
     run_graph(graph, estimators, budgets, n_runs, seed, views, collect_visits,
-              n_jobs, log) -> (results_df, visits_df | None)
+              n_jobs, nested_budgets, log) -> (results_df, visits_df | None)
 """
 
 from __future__ import annotations
@@ -56,20 +74,15 @@ _VIEW: Graph | None = None
 _COLLECT_VISITS = False
 
 
-def _estimate_one(task):
-    """Ein (Budget, Estimator, Lauf)-Tripel. Laeuft im Kindprozess."""
-    b, budget, est_name, category, run, seed = task
-    est = estimator_registry.build(est_name)
-    rng = random.Random(f"{seed}|{est_name}|{b}|{run}")
-    t0 = time.perf_counter()
-    res = est.estimate(_VIEW, budget, rng)
-    row = {
+def _row(est_name, category, seed, b, budget, run, res, seconds, nested):
+    return {
         "estimator": est_name,
         "seed": seed,
         "category": category,
         "budget_rel": b,
         "budget_abs": budget,
         "run": run,
+        "nested": nested,
         "estimate": res.value,
         "queries_used": res.cost.get("queries"),
         "unique_nodes_used": res.cost.get("unique_nodes"),
@@ -77,10 +90,43 @@ def _estimate_one(task):
         "n_random_node": res.cost.get("n_random_node"),
         "n_neighbors": res.cost.get("n_neighbors"),
         "stopped_by": res.cost.get("stopped_by"),
-        "seconds": time.perf_counter() - t0,
+        "seconds": seconds,
         **{f"extra_{k}": v for k, v in res.extra.items()},
     }
-    return row, (res.visits if _COLLECT_VISITS else None)
+
+
+def _estimate_one(task):
+    """Ein (Budget(s), Estimator, Lauf)-Paket. Laeuft im Kindprozess.
+
+    `budgets` ist entweder ein einzelnes (rel, abs)-Paar oder -- im genesteten
+    Modus -- die ganze Leiter, die aus einem Lauf abgelesen wird.
+    """
+    budgets, est_name, category, run, seed = task
+    est = estimator_registry.build(est_name)
+    nested = len(budgets) > 1
+    t0 = time.perf_counter()
+
+    if nested:
+        # Ein Strom je (Estimator, Lauf) -- das Budget kann hier nicht mehr
+        # eingehen, es gibt nur noch einen Lauf fuer alle Budgets.
+        rng = random.Random(f"{seed}|{est_name}|{run}")
+        results = est.estimate_nested(_VIEW, [a for _, a in budgets], rng)
+        seconds = time.perf_counter() - t0
+        out = []
+        for b, budget in budgets:
+            res = results[budget]
+            # Besuchszaehler gibt es nur fuer das groesste Budget (s. pipeline).
+            vis = res.visits if (_COLLECT_VISITS and res.visits is not None) else None
+            out.append((_row(est_name, category, seed, b, budget, run, res,
+                             seconds if budget == budgets[-1][1] else 0.0, True), vis))
+        return out
+
+    b, budget = budgets[0]
+    rng = random.Random(f"{seed}|{est_name}|{b}|{run}")
+    res = est.estimate(_VIEW, budget, rng)
+    return [(_row(est_name, category, seed, b, budget, run, res,
+                  time.perf_counter() - t0, False),
+             res.visits if _COLLECT_VISITS else None)]
 
 
 def run_graph(
@@ -92,6 +138,7 @@ def run_graph(
     views=config.DEFAULT_VIEWS,
     collect_visits: bool = True,
     n_jobs: int = config.DEFAULT_N_JOBS,
+    nested_budgets: bool = False,
     log=print,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     global _VIEW, _COLLECT_VISITS
@@ -106,12 +153,31 @@ def run_graph(
         log(f"[{graph.name}/{view_name}] View gebaut in {time.perf_counter()-t0:.1f}s "
             f"-- |V|={_n(true_size)}, Kanten={_n(view.n_edges)}")
 
-        tasks = [
-            (b, max(int(round(b * true_size)), 2), est.name, str(est.category), run, seed)
-            for b in budgets
-            for est in estimators
-            for run in range(n_runs)
-        ]
+        # (rel, abs) je Budget. Zwei relative Budgets koennen auf einem kleinen
+        # Graphen auf dieselbe absolute Zahl fallen -- genestet waere das eine
+        # Kollision im Ergebnis-dict, deshalb aufsteigend und eindeutig.
+        ladder = sorted({max(int(round(b * true_size)), 2): b
+                         for b in budgets}.items(), key=lambda p: p[0])
+        ladder = [(rel, abs_) for abs_, rel in ladder]
+
+        tasks = []
+        for est in estimators:
+            # capture_recapture teilt sein Budget vorab auf zwei Walks auf --
+            # ein Praefix hat dort eine andere Struktur, der Estimator bringt
+            # deshalb kein estimate_nested mit und laeuft weiter je Budget.
+            nest = nested_budgets and hasattr(est, "estimate_nested")
+            groups = [ladder] if nest else [[pair] for pair in ladder]
+            tasks += [(g, est.name, str(est.category), run, seed)
+                      for g in groups
+                      for run in range(n_runs)]
+        if nested_budgets:
+            single = sorted({e.name for e in estimators
+                             if not hasattr(e, "estimate_nested")})
+            saving = sum(a for _, a in ladder) / ladder[-1][1]
+            log(f"[{graph.name}/{view_name}] genestete Budgets: {len(tasks)} statt "
+                f"{len(estimators) * len(budgets) * n_runs} Laeufen "
+                f"(~{saving:.2f}x weniger Arbeit)"
+                + (f", ausgenommen: {', '.join(single)}" if single else ""))
         _VIEW, _COLLECT_VISITS = view, collect_visits
         visits: dict[tuple, Counter] = {}
         done = 0
@@ -122,9 +188,12 @@ def run_graph(
         pending: dict[tuple, list] = {}
         expected = len(estimators) * len(budgets)
 
-        def handle(result):
+        def handle(results):
+            for row, vis in results:
+                handle_row(row, vis)
+
+        def handle_row(row, vis):
             nonlocal done
-            row, vis = result
             row.update(graph=graph.name, view=view_name, true_size=true_size,
                        rel_error=row["estimate"] / true_size - 1.0)
             rows.append(row)

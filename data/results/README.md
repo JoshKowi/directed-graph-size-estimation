@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 12:28 |
+| Daten vom | 2026-08-26 13:17 |
 |---|---|
-| Code-Fingerabdruck | `4a935e2c7569` |
+| Code-Fingerabdruck | `5eb27aba820c` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -50,7 +50,7 @@ Gepaarter Vergleich der Kantensichten fuer **Slashdot0811** (`results.compare_vi
 
 ### `Slashdot0811__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot0811**, 1 614 636 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot0811** (Seed 42), 1 614 636 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ### `gpt4o_io__estimates.csv`
 
@@ -73,7 +73,7 @@ python run_experiment.py --graphs gpt4o_io \
 
 ### `gpt4o_io__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **gpt4o_io**, 13 731 046 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **gpt4o_io** (Seed 42), 13 731 046 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ## Spalten der `__estimates.csv`
 
@@ -86,7 +86,17 @@ Besuchshaeufigkeit je Original-Knotenname fuer **gpt4o_io**, 13 731 046 Zeil
 | `n_random_node`, `n_neighbors` | Zugriffe je Art zum vollen Preis |
 | `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |
 | `stopped_by` | warum der Lauf endete -- normal `budget` |
+| `seed` | Zufallsstrom des Laufs (siehe Dateiname) |
+| `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |
 | `extra_*` | verfahrensspezifisch, z.B. `extra_n_samples` |
+
+Ist `nested` wahr, stammen alle Budgets einer Laufnummer aus *einem*
+Lauf (`--checkpoint-budgets`): die Stichprobe wurde dort abgeschnitten,
+wo ein eigenstaendiger Lauf mit dem kleineren Budget geendet haette.
+Je Budget ist die Verteilung dieselbe -- die Punkte einer Laufnummer
+sind aber ueber die Budgets *genestet* und nicht unabhaengig. `seconds`
+steht dann vollstaendig beim groessten Budget, die kleineren tragen 0.
+Besuchszaehler entstehen in diesem Modus nur fuer das groesste Budget.
 
 Steht in `stopped_by` etwas anderes als `budget`, hat nicht das
 Kostenmodell den Lauf beendet -- die Zahlen sind dann mit Vorsicht zu

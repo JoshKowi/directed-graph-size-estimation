@@ -40,6 +40,12 @@ EXPECTED_COLUMNS = ("stopped_by", "queries_used", "cached_queries", "budget_abs"
 # dann aus dem Dateinamen (Default, wenn kein Zusatz da ist).
 
 
+def _count_rows(path: Path) -> int:
+    """Datenzeilen einer CSV, ohne sie zu parsen (Kopfzeile abgezogen)."""
+    with path.open("rb") as fh:
+        return max(sum(chunk.count(b"\n") for chunk in iter(lambda: fh.read(1 << 20), b"")) - 1, 0)
+
+
 def _num(n) -> str:
     """Tausender mit schmalem Abstand statt Komma (das trennt hier Listen)."""
     return f"{int(n):,}".replace(",", "\u2009")
@@ -138,6 +144,15 @@ def _results_readme() -> str:
         graph, seed, kind = results_io.parse_stem(path.stem)
         parts.append(f"### `{path.name}`")
         parts.append("")
+        if kind == "visits":
+            # Nicht einlesen: die Besuchs-CSV ist bei gpt4o_io fast 1 GB gross
+            # und es wird nur die Zeilenzahl gebraucht. Ein voller read_csv
+            # haengte jedem Experiment- und Plot-Lauf zweistellige Sekunden an.
+            parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{graph}** "
+                      f"(Seed {seed}), {_num(_count_rows(path))} Zeilen. Faellt beim "
+                      "selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet "
+                      "sie aus).", ""]
+            continue
         try:
             df = pd.read_csv(path)
         except Exception as exc:                      # noqa: BLE001
@@ -177,10 +192,6 @@ def _results_readme() -> str:
                 cmd[-1] += " \\"
                 cmd.append(f"    --seed {seed}")
             parts += ["", "Erzeugt mit:", "", "```bash", *cmd, "```", ""]
-        elif kind == "visits":
-            parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{graph}**, "
-                      f"{_num(len(df))} Zeilen. Faellt beim selben Lauf ab wie die "
-                      "Schaetzungen (`--no-visits` schaltet sie aus).", ""]
         elif kind == "view_comparison":
             parts += [f"Gepaarter Vergleich der Kantensichten fuer **{graph}** "
                       "(`results.compare_views`). Entsteht beim Plotten.", ""]
@@ -198,7 +209,17 @@ def _results_readme() -> str:
         "| `n_random_node`, `n_neighbors` | Zugriffe je Art zum vollen Preis |",
         "| `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |",
         "| `stopped_by` | warum der Lauf endete -- normal `budget` |",
+        "| `seed` | Zufallsstrom des Laufs (siehe Dateiname) |",
+        "| `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |",
         "| `extra_*` | verfahrensspezifisch, z.B. `extra_n_samples` |",
+        "",
+        "Ist `nested` wahr, stammen alle Budgets einer Laufnummer aus *einem*",
+        "Lauf (`--checkpoint-budgets`): die Stichprobe wurde dort abgeschnitten,",
+        "wo ein eigenstaendiger Lauf mit dem kleineren Budget geendet haette.",
+        "Je Budget ist die Verteilung dieselbe -- die Punkte einer Laufnummer",
+        "sind aber ueber die Budgets *genestet* und nicht unabhaengig. `seconds`",
+        "steht dann vollstaendig beim groessten Budget, die kleineren tragen 0.",
+        "Besuchszaehler entstehen in diesem Modus nur fuer das groesste Budget.",
         "",
         "Steht in `stopped_by` etwas anderes als `budget`, hat nicht das",
         "Kostenmodell den Lauf beendet -- die Zahlen sind dann mit Vorsicht zu",
