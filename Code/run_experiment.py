@@ -40,7 +40,9 @@ import provenance
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list", action="store_true", help="Graphen und Estimators anzeigen")
-    p.add_argument("--graphs", nargs="+", default=None, help="Graph-Namen (Default: alle)")
+    p.add_argument("--graphs", nargs="+", default=None,
+                   help="Graph-Namen oder Kuerzel wie "
+                        f"{', '.join(sorted(config.GRAPH_ALIASES))} (Default: alle)")
     p.add_argument("--estimators", nargs="+", default=None, help="Estimator-Namen (Default: alle)")
     p.add_argument("--budgets", nargs="+", type=float, default=None,
                    help=f"Default: {list(config.DEFAULT_BUDGETS)}, bei Graphen ab "
@@ -66,12 +68,17 @@ def main() -> None:
     args = p.parse_args()
 
     if args.list:
-        print("Graphen:   ", ", ".join(loader.available_graphs()))
+        print("Graphen:")
+        for name in loader.available_graphs():
+            label = config.graph_label(name)
+            alias = next((a for a, n in config.GRAPH_ALIASES.items() if n == name), "")
+            print(f"    {name:<26}{alias:<12}{'' if label == name else label}")
         print("Estimators:", ", ".join(sorted(estimators.REGISTRY)))
         print("Views:     ", ", ".join(sorted(VIEWS)))
         return
 
-    graph_names = args.graphs or loader.available_graphs()
+    graph_names = ([config.resolve_graph(g) for g in args.graphs]
+                   if args.graphs else loader.available_graphs())
     ests = estimators.build_all(args.estimators)
 
     for name in graph_names:

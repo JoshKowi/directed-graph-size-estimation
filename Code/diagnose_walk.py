@@ -222,7 +222,7 @@ def main() -> None:
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
 
-    graph = loader.load_graph(args.graph)
+    graph = loader.load_graph(args.graph)   # Kuerzel loest der Loader auf
     results = []
     for view in args.views:
         d = diagnose(graph, view, args.dead_end, args.budget, args.top, args.seed)

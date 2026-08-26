@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 13:17 |
+| Daten vom | 2026-08-26 13:47 |
 |---|---|
-| Code-Fingerabdruck | `5eb27aba820c` |
+| Code-Fingerabdruck | `f42b56851628` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -27,53 +27,84 @@ reproduzierbar) -- diese Datei haelt fest, woher sie stammen.
 
 ### `Slashdot0811__estimates.csv`
 
-Schaetzungen fuer **Slashdot0811**, 60 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **Slashdot (Nov 2008)** (`Slashdot0811`), 120 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: directed
-- Budgets: 0.01, 0.05 (relativ zu |V| = 77 360)
+- Views: directed, undirected
+- Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 77 360)
 - Laeufe je Punkt: 10
-- Estimators: uniform_collision, wis-katzir__indep, wis-katzir__rw-restart
+- Estimators: uniform_collision
 - Seed: 42
-- Abbruchgrund: {'budget': 60}
+- Abbruchgrund: {'budget': 120}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs Slashdot0811 \
-    --estimators uniform_collision wis-katzir__indep wis-katzir__rw-restart \
-    --views directed
+    --estimators uniform_collision \
+    --views directed undirected
 ```
 
 ### `Slashdot0811__view_comparison.csv`
 
-Gepaarter Vergleich der Kantensichten fuer **Slashdot0811** (`results.compare_views`). Entsteht beim Plotten.
+Gepaarter Vergleich der Kantensichten fuer **Slashdot (Nov 2008)** (`results.compare_views`). Entsteht beim Plotten.
 
 ### `Slashdot0811__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot0811** (Seed 42), 1 614 636 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42), 28 846 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+
+### `gpt4o_adj_from_dataset__estimates.csv`
+
+Schaetzungen fuer **GPT-4o knowledge graph (all edges)** (`gpt4o_adj_from_dataset`), 120 Zeilen (= Estimator x View x Budget x Lauf).
+
+- Views: directed, undirected
+- Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 15 723 674)
+- Laeufe je Punkt: 10
+- Estimators: uniform_collision
+- Seed: 42
+- Abbruchgrund: {'budget': 120}
+
+Erzeugt mit:
+
+```bash
+python run_experiment.py --graphs gpt4o_adj_from_dataset \
+    --estimators uniform_collision \
+    --views directed undirected
+```
+
+### `gpt4o_adj_from_dataset__view_comparison.csv`
+
+Gepaarter Vergleich der Kantensichten fuer **GPT-4o knowledge graph (all edges)** (`results.compare_views`). Entsteht beim Plotten.
+
+### `gpt4o_adj_from_dataset__visits.csv`
+
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (all edges)** (Seed 42), 5 860 816 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ### `gpt4o_io__estimates.csv`
 
-Schaetzungen fuer **gpt4o_io**, 200 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4o knowledge graph (instances only)** (`gpt4o_io`), 120 Zeilen (= Estimator x View x Budget x Lauf).
 
 - Views: directed, undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
+- Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 5 693 001)
 - Laeufe je Punkt: 10
-- Estimators: uniform_collision, wis-katzir__rw-history
+- Estimators: uniform_collision
 - Seed: 42
-- Abbruchgrund: {'budget': 200}
+- Abbruchgrund: {'budget': 120}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4o_io \
-    --estimators uniform_collision wis-katzir__rw-history \
+    --estimators uniform_collision \
     --views directed undirected
 ```
 
+### `gpt4o_io__view_comparison.csv`
+
+Gepaarter Vergleich der Kantensichten fuer **GPT-4o knowledge graph (instances only)** (`results.compare_views`). Entsteht beim Plotten.
+
 ### `gpt4o_io__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **gpt4o_io** (Seed 42), 13 731 046 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (instances only)** (Seed 42), 2 121 482 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ## Spalten der `__estimates.csv`
 

@@ -24,6 +24,7 @@ def available_graphs() -> list[str]:
 
 
 def load_graph(name: str) -> Graph:
+    name = config.resolve_graph(name)      # Kuerzel erlauben, s. config
     if name not in _CACHE:
         clear_cache()
         _CACHE[name] = load_pickle(config.ADJACENCIES_DIR / f"{name}.pkl")

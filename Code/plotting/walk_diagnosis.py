@@ -165,7 +165,8 @@ def plot_diagnosis(results: list[dict], path: Path | None = None) -> Path:
 
     d0 = results[0]
     fig.suptitle(
-        f"{d0['graph']}: random walk diagnosis (dead_end={d0['dead_end']}, "
+        f"{config.graph_label(d0['graph'])}: random walk diagnosis "
+        f"(dead_end={d0['dead_end']}, "
         f"budget={d0['budget_rel']:g}, seed={d0.get('seed', '?')})",
         color=INK, fontsize=12, x=0.005, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.965))

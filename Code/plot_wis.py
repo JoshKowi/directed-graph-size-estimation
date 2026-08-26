@@ -85,7 +85,7 @@ def main() -> None:
                    help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
     args = p.parse_args()
 
-    for graph in args.graphs:
+    for graph in (config.resolve_graph(g) for g in args.graphs):
         df = results_io.load_results(graph, seed=args.seed)
         for seed in results_io.seeds_available(df) or [config.DEFAULT_SEED]:
             summary = results_io.summarize(df[df["seed"] == seed])
@@ -108,7 +108,8 @@ def main() -> None:
                           f"{sorted(have)} in {views} vorhanden)")
                     continue
                 path = config.PLOTS_DIR / f"{graph}__{tag}{slug}.png"
-                plot_comparison(summary, graph, ests, views, f"{graph}: {title}",
+                plot_comparison(summary, graph, ests, views,
+                                f"{config.graph_label(graph)}: {title}",
                                 path=path, colors=COLORS, note=note)
                 print("  ->", path)
     for path in provenance.write_readmes():

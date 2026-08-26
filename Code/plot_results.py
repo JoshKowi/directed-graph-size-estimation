@@ -55,7 +55,8 @@ def main() -> None:
         note = f"seed {seed}"
         if summary["nested"].any():      # Punkte je Lauf dann korreliert
             note += "  |  nested budgets"
-        for name in args.graphs or sorted(summary["graph"].unique()):
+        for name in ([config.resolve_graph(g) for g in args.graphs]
+                     if args.graphs else sorted(summary["graph"].unique())):
             path = config.PLOTS_DIR / f"{name}__{tag}ranges.png"
             plot_ranges(summary[summary["graph"] == name], graph_name=name,
                         path=path, note=note)

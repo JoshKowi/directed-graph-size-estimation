@@ -142,13 +142,14 @@ def _results_readme() -> str:
              "", "## Dateien", ""]
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
         graph, seed, kind = results_io.parse_stem(path.stem)
+        label = config.graph_label(graph)
         parts.append(f"### `{path.name}`")
         parts.append("")
         if kind == "visits":
             # Nicht einlesen: die Besuchs-CSV ist bei gpt4o_io fast 1 GB gross
             # und es wird nur die Zeilenzahl gebraucht. Ein voller read_csv
             # haengte jedem Experiment- und Plot-Lauf zweistellige Sekunden an.
-            parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{graph}** "
+            parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{label}** "
                       f"(Seed {seed}), {_num(_count_rows(path))} Zeilen. Faellt beim "
                       "selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet "
                       "sie aus).", ""]
@@ -161,7 +162,7 @@ def _results_readme() -> str:
         if kind == "estimates":
             budgets = ", ".join(f"{b:g}" for b in sorted(df["budget_rel"].unique()))
             parts += [
-                f"Schaetzungen fuer **{graph}**, {_num(len(df))} Zeilen "
+                f"Schaetzungen fuer **{label}** (`{graph}`), {_num(len(df))} Zeilen "
                 "(= Estimator x View x Budget x Lauf).",
                 "",
                 f"- Views: {', '.join(sorted(df['view'].unique()))}",
@@ -193,7 +194,7 @@ def _results_readme() -> str:
                 cmd.append(f"    --seed {seed}")
             parts += ["", "Erzeugt mit:", "", "```bash", *cmd, "```", ""]
         elif kind == "view_comparison":
-            parts += [f"Gepaarter Vergleich der Kantensichten fuer **{graph}** "
+            parts += [f"Gepaarter Vergleich der Kantensichten fuer **{label}** "
                       "(`results.compare_views`). Entsteht beim Plotten.", ""]
         else:
             parts += [f"{_num(len(df))} Zeilen.", ""]
@@ -246,6 +247,7 @@ def _plots_readme() -> str:
     ]
     for path in sorted(config.PLOTS_DIR.glob("*.png")):
         graph, seed, slug = results_io.parse_stem(path.stem)
+        label = config.graph_label(graph)
         parts.append(f"### `{path.name}`")
         parts.append("")
         if slug in specs:
@@ -253,7 +255,7 @@ def _plots_readme() -> str:
             parts += [
                 f"{title}",
                 "",
-                f"- Graph: **{graph}**",
+                f"- Graph: **{label}** (`{graph}`)",
                 f"- Seed: {seed}",
                 f"- Views: {', '.join(views)}",
                 f"- Estimators: {', '.join(ests)}",
@@ -264,14 +266,14 @@ def _plots_readme() -> str:
                 "",
             ]
         elif slug == "walk_diagnosis":
-            parts += [f"Diagnose eines Random Walks auf **{graph}** (Seed {seed}): "
+            parts += [f"Diagnose eines Random Walks auf **{label}** (Seed {seed}): "
                       "Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, "
                       "meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py "
                       f"--graph {graph} --views directed undirected"
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
                       + "` (`Code/diagnose_walk.py`).", ""]
         elif slug == "ranges":
-            parts += [f"Uebersichtsraster fuer **{graph}** (Seed {seed}): "
+            parts += [f"Uebersichtsraster fuer **{label}** (Seed {seed}): "
                       "Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit "
                       f"`python plot_results.py --graphs {graph}"
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")

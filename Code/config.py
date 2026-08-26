@@ -1,8 +1,9 @@
 """Zentrale Konfiguration: Pfade und Default-Parameter des Experiments.
 
-Schnittstelle (nur Konstanten):
+Schnittstelle:
     ROOT, ADJACENCIES_DIR, RESULTS_DIR, PLOTS_DIR
     DEFAULT_BUDGETS, DEFAULT_N_RUNS, DEFAULT_SEED, DEFAULT_BUDGET_METRIC, DEFAULT_VIEWS
+    GRAPH_LABELS, graph_label(name), GRAPH_ALIASES, resolve_graph(name)
 """
 
 from pathlib import Path
@@ -15,6 +16,50 @@ ADJACENCIES_DIR = ROOT / "adjacencies"
 # Ergebnisse (eine CSV je Graph) und Plots.
 RESULTS_DIR = ROOT / "data" / "results"
 PLOTS_DIR = ROOT / "data" / "plots"
+
+# --- Anzeigenamen der Graphen ------------------------------------------
+# Der technische Name ist und bleibt der Dateiname der Adjazenzliste: er steht
+# in jedem Pfad, in jeder CSV-Spalte `graph` und in jedem CLI-Aufruf. Fuer
+# Grafiken und READMEs ist er aber nichtssagend -- "adjacency_list_uni" sagt
+# niemandem, dass es der Wissensgraph von GPT-4 ist.
+#
+# Deshalb hier eine reine Anzeigeschicht: Dateiname -> Beschriftung. Nichts
+# davon beruehrt Dateinamen, Ergebnisspalten oder CLI-Argumente, es aendert
+# nur, was im Bild steht. Wer einen Graphen umbenennen will, aendert genau
+# diese eine Zeile; fehlt ein Eintrag, wird der Dateiname selbst benutzt.
+#
+# Die Kurzbeschreibungen stammen aus adjacencies/README.txt.
+GRAPH_LABELS = {
+    "Slashdot0811": "Slashdot (Nov 2008)",
+    "adjacency_list_uni": "GPT-4 knowledge graph (all edges)",
+    "gpt4o_adj_from_dataset": "GPT-4o knowledge graph (all edges)",
+    "gpt4o_io": "GPT-4o knowledge graph (instances only)",
+    "wiki-topcats": "Wikipedia (top categories)",
+}
+
+
+def graph_label(name: str) -> str:
+    """Beschriftung eines Graphen; faellt auf den Dateinamen zurueck."""
+    return GRAPH_LABELS.get(name, name)
+
+
+# Kuerzel fuer die Kommandozeile: --graphs gpt-4o-io statt --graphs gpt4o_io.
+# Wieder nur eine Eingabeschicht -- aufgeloest wird sofort auf den Dateinamen,
+# gespeichert und beschriftet wird nie das Kuerzel.
+GRAPH_ALIASES = {
+    "slashdot": "Slashdot0811",
+    "gpt-4": "adjacency_list_uni",
+    "gpt-4o": "gpt4o_adj_from_dataset",
+    "gpt-4o-io": "gpt4o_io",
+    "wiki": "wiki-topcats",
+}
+
+
+def resolve_graph(name: str) -> str:
+    """Kuerzel -> Dateiname. Unbekanntes bleibt unveraendert (auch der
+    Dateiname selbst funktioniert also weiterhin)."""
+    return GRAPH_ALIASES.get(name.strip().lower(), name)
+
 
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.

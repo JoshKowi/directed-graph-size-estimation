@@ -18,6 +18,7 @@ Schnittstelle:
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -141,11 +142,15 @@ def plot_ranges(summary, graph_name: str | None = None, path: Path | None = None
                           ncol=len(estimators), loc="lower right", bbox_to_anchor=(1.0, 1.0),
                           handletextpad=0.4, columnspacing=1.4)
 
-    fig.suptitle(f"{graph_name}: spread of size estimates by edge view",
-                 color=INK, fontsize=12, x=0.01, ha="left")
+    # Umbrechen statt ueberlaufen: die Anzeigenamen der Graphen sind lang, und
+    # bei nur einer Spalte ist die Figur schmal (siehe config.GRAPH_LABELS).
+    wrapped = textwrap.fill(
+        f"{config.graph_label(graph_name)}: spread of size estimates by edge view",
+        width=44 * len(categories))
+    fig.suptitle(wrapped, color=INK, fontsize=12, x=0.01, ha="left", va="top", y=0.995)
     if note:      # Herkunft des Bildes, v.a. der Seed -- siehe plotting.compare
-        fig.text(0.99, 0.985, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
-    fig.tight_layout()
+        fig.text(0.99, 0.995, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
+    fig.tight_layout(rect=(0, 0, 1, 0.96 - 0.022 * wrapped.count("\n")))
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)

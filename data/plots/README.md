@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 13:17 |
+| Daten vom | 2026-08-26 13:47 |
 |---|---|
-| Code-Fingerabdruck | `5eb27aba820c` |
+| Code-Fingerabdruck | `f42b56851628` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -32,7 +32,7 @@ Referenzreihe in allen `wis_*`/`deadend_*`-Grafiken: `uniform_collision`.
 
 UIS collision counting with a random walk -- dead-end strategies (directed)
 
-- Graph: **Slashdot0811**
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Views: directed
 - Estimators: uniform_collision, rw_plain__restart__none, rw_plain__backtrack__none, rw_plain__history__none
@@ -41,17 +41,17 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 ### `Slashdot0811__ranges.png`
 
-Uebersichtsraster fuer **Slashdot0811** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
+Uebersichtsraster fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
 
 ### `Slashdot0811__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **Slashdot0811** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph Slashdot0811 --views directed undirected` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **Slashdot (Nov 2008)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph Slashdot0811 --views directed undirected` (`Code/diagnose_walk.py`).
 
 ### `Slashdot0811__wis_indep__directed.png`
 
 WIS (Katzir) -- independent degree-weighted draws (directed)
 
-- Graph: **Slashdot0811**
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Views: directed
 - Estimators: uniform_collision, wis-katzir__indep
@@ -62,7 +62,7 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 WIS (Katzir) -- independent degree-weighted draws (undirected)
 
-- Graph: **Slashdot0811**
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__indep
@@ -73,7 +73,7 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 WIS with a true random walk -- all dead-end strategies (undirected)
 
-- Graph: **Slashdot0811**
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
@@ -84,7 +84,7 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 WIS with random walk (history) -- directed vs undirected
 
-- Graph: **Slashdot0811**
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Views: directed, undirected
 - Estimators: uniform_collision, wis-katzir__rw-history
@@ -93,29 +93,37 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 ### `adjacency_list_uni__seed100__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 100): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 100` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 100): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 100` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__seed123__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 123): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 123` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 123): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 123` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__seed1__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 1): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 1` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 1): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 1` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
+
+### `gpt4o_adj_from_dataset__ranges.png`
+
+Uebersichtsraster fuer **GPT-4o knowledge graph (all edges)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
+
+### `gpt4o_io__ranges.png`
+
+Uebersichtsraster fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/ranges.py`).
 
 ### `gpt4o_io__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **gpt4o_io** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph gpt4o_io --views directed undirected` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4o knowledge graph (instances only)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph gpt4o_io --views directed undirected` (`Code/diagnose_walk.py`).
 
 ### `gpt4o_io__wis_rw__undirected.png`
 
 WIS with a true random walk -- all dead-end strategies (undirected)
 
-- Graph: **gpt4o_io**
+- Graph: **GPT-4o knowledge graph (instances only)** (`gpt4o_io`)
 - Seed: 42
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
@@ -126,7 +134,7 @@ Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis
 
 WIS with random walk (history) -- directed vs undirected
 
-- Graph: **gpt4o_io**
+- Graph: **GPT-4o knowledge graph (instances only)** (`gpt4o_io`)
 - Seed: 42
 - Views: directed, undirected
 - Estimators: uniform_collision, wis-katzir__rw-history
@@ -152,5 +160,6 @@ oben pruefen und gegen den Commit, der sie hinzugefuegt hat
 (`git log -- data/plots/saved/<name>.png`).
 
 - `Slashdot0811__wis_rw_history__views.png`
+- `gpt4o_io__ranges.png`
 - `gpt4o_io__walk_diagnosis-sink.png`
 - `gpt4o_io__walk_diagnosis-weights.png`
