@@ -9,6 +9,13 @@ Beispiele:
     python run_experiment.py --graphs Slashdot0811
     python run_experiment.py --graphs Slashdot0811 --budgets 0.001 0.01 0.1 --runs 20
     python run_experiment.py --graphs Slashdot0811 --views directed undirected reverse
+    python run_experiment.py --graphs Slashdot0811 --seed 7
+
+Der Seed bestimmt den kompletten Zufallsstrom. Ein zweiter Lauf mit anderem
+Seed ist ein zweiter, gleichberechtigter Durchlauf desselben Experiments --
+so laesst sich pruefen, ob ein Ergebnis stabil ist oder am Zufall haengt. Er
+steht in jeder Ergebniszeile (Spalte `seed`), im Dateinamen (`__seed7__`,
+ausser beim Default) und auf jeder daraus erzeugten Grafik.
 """
 
 from __future__ import annotations
@@ -37,7 +44,11 @@ def main() -> None:
     p.add_argument("--views", nargs="+", default=list(config.DEFAULT_VIEWS),
                    choices=sorted(VIEWS), help="Kantensichten (Default: directed undirected)")
     p.add_argument("--runs", type=int, default=config.DEFAULT_N_RUNS)
-    p.add_argument("--seed", type=int, default=config.DEFAULT_SEED)
+    p.add_argument("--seed", type=int, default=config.DEFAULT_SEED,
+                   help=f"Zufallsstrom des ganzen Laufs (Default: {config.DEFAULT_SEED}). "
+                        "Abweichende Seeds schreiben in eigene Dateien "
+                        "(<graph>__seed<N>__estimates.csv) und ueberschreiben "
+                        "vorhandene Ergebnisse daher nicht.")
     p.add_argument("--jobs", type=int, default=config.DEFAULT_N_JOBS,
                    help="Parallele Prozesse je View (1 = sequentiell)")
     p.add_argument("--no-visits", action="store_true", help="Besuchsstatistik nicht speichern")
@@ -72,7 +83,7 @@ def main() -> None:
         print(f"[{name}] {len(ests)} Estimators x {len(budgets)} Budgets x "
               f"{args.runs} Laeufe x {len(args.views)} Views = "
               f"{len(ests) * len(budgets) * args.runs * len(args.views)} Schaetzungen, "
-              f"{args.jobs} Prozesse", flush=True)
+              f"{args.jobs} Prozesse, Seed {args.seed}", flush=True)
 
         df, visits = run_graph(
             graph,
@@ -85,9 +96,10 @@ def main() -> None:
             n_jobs=args.jobs,
             log=lambda m: print(m, flush=True),
         )
-        print("  ->", results_io.save_results(df, name))
+        print("  ->", results_io.save_results(df, name, seed=args.seed))
         if visits is not None:
-            print("  ->", results_io.save_results(visits, name, kind="visits"))
+            print("  ->", results_io.save_results(visits, name, kind="visits",
+                                                  seed=args.seed))
         loader.clear_cache()
 
     # Ordner-README aktuell halten -- sonst steht sie nach dem naechsten Lauf falsch da

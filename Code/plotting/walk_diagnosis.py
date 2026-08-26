@@ -166,13 +166,15 @@ def plot_diagnosis(results: list[dict], path: Path | None = None) -> Path:
     d0 = results[0]
     fig.suptitle(
         f"{d0['graph']}: random walk diagnosis (dead_end={d0['dead_end']}, "
-        f"budget={d0['budget_rel']:g})",
+        f"budget={d0['budget_rel']:g}, seed={d0.get('seed', '?')})",
         color=INK, fontsize=12, x=0.005, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.965))
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = config.PLOTS_DIR / f"{d0['graph']}__walk_diagnosis.png"
+        from experiment.results import seed_tag
+        path = (config.PLOTS_DIR /
+                f"{d0['graph']}__{seed_tag(d0.get('seed'))}walk_diagnosis.png")
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return path

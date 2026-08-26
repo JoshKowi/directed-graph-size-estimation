@@ -12,7 +12,8 @@ Unterschaetzung symmetrisch lesbar sind.
 
 Schnittstelle:
     budget_ticks(panel, budgets) -> list[str]
-    plot_ranges(summary, graph_name=None, path=None) -> matplotlib.figure.Figure
+    plot_ranges(summary, graph_name=None, path=None, note=None)
+        -> matplotlib.figure.Figure
 """
 
 from __future__ import annotations
@@ -75,7 +76,8 @@ VIEW_TITLES = {
 }
 
 
-def plot_ranges(summary, graph_name: str | None = None, path: Path | None = None):
+def plot_ranges(summary, graph_name: str | None = None, path: Path | None = None,
+                note: str | None = None):
     """summary: DataFrame aus experiment.results.summarize()."""
     if graph_name is not None:
         summary = summary[summary["graph"] == graph_name]
@@ -141,6 +143,8 @@ def plot_ranges(summary, graph_name: str | None = None, path: Path | None = None
 
     fig.suptitle(f"{graph_name}: spread of size estimates by edge view",
                  color=INK, fontsize=12, x=0.01, ha="left")
+    if note:      # Herkunft des Bildes, v.a. der Seed -- siehe plotting.compare
+        fig.text(0.99, 0.985, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
     fig.tight_layout()
 
     if path is None:

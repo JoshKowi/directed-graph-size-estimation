@@ -2,14 +2,14 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-25 18:39 |
+| Daten vom | 2026-08-26 12:28 |
 |---|---|
-| Code-Fingerabdruck | `6d0bf589aecd` |
+| Code-Fingerabdruck | `4a935e2c7569` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
 | Laeufe je Punkt | 10 |
-| Seed | 42 |
+| Seed (Default) | 42 -- je Datei unten angegeben |
 
 Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei
 Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.
@@ -33,16 +33,26 @@ Referenzreihe in allen `wis_*`/`deadend_*`-Grafiken: `uniform_collision`.
 UIS collision counting with a random walk -- dead-end strategies (directed)
 
 - Graph: **Slashdot0811**
+- Seed: 42
 - Views: directed
 - Estimators: uniform_collision, rw_plain__restart__none, rw_plain__backtrack__none, rw_plain__history__none
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
+
+### `Slashdot0811__ranges.png`
+
+Uebersichtsraster fuer **Slashdot0811** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
+
+### `Slashdot0811__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **Slashdot0811** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph Slashdot0811 --views directed undirected` (`Code/diagnose_walk.py`).
 
 ### `Slashdot0811__wis_indep__directed.png`
 
 WIS (Katzir) -- independent degree-weighted draws (directed)
 
 - Graph: **Slashdot0811**
+- Seed: 42
 - Views: directed
 - Estimators: uniform_collision, wis-katzir__indep
 
@@ -53,6 +63,7 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 WIS (Katzir) -- independent degree-weighted draws (undirected)
 
 - Graph: **Slashdot0811**
+- Seed: 42
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__indep
 
@@ -63,6 +74,7 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 WIS with a true random walk -- all dead-end strategies (undirected)
 
 - Graph: **Slashdot0811**
+- Seed: 42
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
 
@@ -73,10 +85,41 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 WIS with random walk (history) -- directed vs undirected
 
 - Graph: **Slashdot0811**
+- Seed: 42
 - Views: directed, undirected
 - Estimators: uniform_collision, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
+
+### `adjacency_list_uni__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **adjacency_list_uni** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
+
+### `gpt4o_io__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **gpt4o_io** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph gpt4o_io --views directed undirected` (`Code/diagnose_walk.py`).
+
+### `gpt4o_io__wis_rw__undirected.png`
+
+WIS with a true random walk -- all dead-end strategies (undirected)
+
+- Graph: **gpt4o_io**
+- Seed: 42
+- Views: undirected
+- Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
+
+Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw__undirected`).
+
+### `gpt4o_io__wis_rw_history__views.png`
+
+WIS with random walk (history) -- directed vs undirected
+
+- Graph: **gpt4o_io**
+- Seed: 42
+- Views: directed, undirected
+- Estimators: uniform_collision, wis-katzir__rw-history
+
+Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
 
 ## `saved/` -- die versionierten Meilensteine
 
@@ -97,3 +140,4 @@ oben pruefen und gegen den Commit, der sie hinzugefuegt hat
 (`git log -- data/plots/saved/<name>.png`).
 
 - `Slashdot0811__wis_rw_history__views.png`
+- `gpt4o_io__walk_diagnosis copy.png`

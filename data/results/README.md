@@ -2,14 +2,14 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-25 18:39 |
+| Daten vom | 2026-08-26 12:28 |
 |---|---|
-| Code-Fingerabdruck | `6d0bf589aecd` |
+| Code-Fingerabdruck | `4a935e2c7569` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
 | Laeufe je Punkt | 10 |
-| Seed | 42 |
+| Seed (Default) | 42 -- je Datei unten angegeben |
 
 Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei
 Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.
@@ -33,6 +33,7 @@ Schaetzungen fuer **Slashdot0811**, 60 Zeilen (= Estimator x View x Budget x Lau
 - Budgets: 0.01, 0.05 (relativ zu |V| = 77 360)
 - Laeufe je Punkt: 10
 - Estimators: uniform_collision, wis-katzir__indep, wis-katzir__rw-restart
+- Seed: 42
 - Abbruchgrund: {'budget': 60}
 
 Erzeugt mit:
@@ -59,6 +60,7 @@ Schaetzungen fuer **gpt4o_io**, 200 Zeilen (= Estimator x View x Budget x Lauf).
 - Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
 - Laeufe je Punkt: 10
 - Estimators: uniform_collision, wis-katzir__rw-history
+- Seed: 42
 - Abbruchgrund: {'budget': 200}
 
 Erzeugt mit:

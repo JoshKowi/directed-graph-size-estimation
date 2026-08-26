@@ -8,12 +8,18 @@ Beispiele:
     python plot_results.py --graphs Slashdot0811
     python plot_results.py --match uniform rw_plain__backtrack
     python plot_results.py --estimators uniform_collision_weighted rw_plain__restart__none
+    python plot_results.py --graphs Slashdot0811 --seed 7
+
+Je Graph *und* Seed entsteht ein eigenes Bild: verschiedene Seeds sind
+verschiedene Durchlaeufe des Experiments und gehoeren nicht in dieselbe
+Spanne. Der Seed steht oben rechts im Bild.
 """
 
 from __future__ import annotations
 
 import argparse
 
+import config
 from experiment import results as results_io
 from plotting.ranges import plot_ranges
 
@@ -24,9 +30,11 @@ def main() -> None:
     p.add_argument("--estimators", nargs="+", default=None, help="exakte Estimator-Namen")
     p.add_argument("--match", nargs="+", default=None,
                    help="Estimators, deren Name einen dieser Teilstrings enthaelt")
+    p.add_argument("--seed", type=int, default=None,
+                   help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
     args = p.parse_args()
 
-    df = results_io.load_results()
+    df = results_io.load_results(seed=args.seed)
     if df.empty:
         print("Keine Ergebnisse gefunden -- zuerst run_experiment.py ausfuehren.")
         return
@@ -39,13 +47,19 @@ def main() -> None:
         print("Auswahl trifft auf keine Zeile zu.")
         return
 
-    summary = results_io.summarize(df)
-    comparison = results_io.compare_views(df)
-    for name in args.graphs or sorted(summary["graph"].unique()):
-        plot_ranges(summary, graph_name=name)
-        print("  ->", f"data/plots/{name}__ranges.png")
-        print("  ->", results_io.save_results(
-            comparison[comparison["graph"] == name], name, kind="view_comparison"))
+    for seed in results_io.seeds_available(df):
+        part = df[df["seed"] == seed]
+        summary = results_io.summarize(part)
+        comparison = results_io.compare_views(part)
+        tag = results_io.seed_tag(seed)
+        for name in args.graphs or sorted(summary["graph"].unique()):
+            path = config.PLOTS_DIR / f"{name}__{tag}ranges.png"
+            plot_ranges(summary[summary["graph"] == name], graph_name=name,
+                        path=path, note=f"seed {seed}")
+            print("  ->", path)
+            print("  ->", results_io.save_results(
+                comparison[comparison["graph"] == name], name,
+                kind="view_comparison", seed=seed))
 
 
 if __name__ == "__main__":

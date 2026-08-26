@@ -28,12 +28,16 @@ from datetime import datetime
 from pathlib import Path
 
 import config
+from experiment import results as results_io
 
 CODE_DIR = Path(__file__).resolve().parent
 
 # Spalten, die der aktuelle Code schreibt. Fehlen sie, stammt die CSV aus einer
 # aelteren Version -- das soll in der README stehen, statt still zu verwirren.
 EXPECTED_COLUMNS = ("stopped_by", "queries_used", "cached_queries", "budget_abs")
+# `seed` steht bewusst nicht hier: fehlt die Spalte, stammt die Datei aus der
+# Zeit vor --seed, ihre Zahlen bleiben aber gueltig -- der Seed ergibt sich
+# dann aus dem Dateinamen (Default, wenn kein Zusatz da ist).
 
 
 def _num(n) -> str:
@@ -108,7 +112,7 @@ def _header(title: str) -> str:
         f"{config.COST_NEIGHBORS}, cache_hit {config.COST_CACHE_HIT} |",
         f"| Budgets (Default) | {', '.join(f'{b:g}' for b in config.DEFAULT_BUDGETS)} |",
         f"| Laeufe je Punkt | {config.DEFAULT_N_RUNS} |",
-        f"| Seed | {config.DEFAULT_SEED} |",
+        f"| Seed (Default) | {config.DEFAULT_SEED} -- je Datei unten angegeben |",
         "",
         "Der Fingerabdruck ist ein SHA-256 ueber alle `.py` unter `Code/`. Zwei",
         "Ergebnisse mit demselben Fingerabdruck stammen aus identischem Code.",
@@ -131,7 +135,7 @@ def _results_readme() -> str:
              "reproduzierbar) -- diese Datei haelt fest, woher sie stammen.",
              "", "## Dateien", ""]
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
-        graph, _, kind = path.stem.partition("__")
+        graph, seed, kind = results_io.parse_stem(path.stem)
         parts.append(f"### `{path.name}`")
         parts.append("")
         try:
@@ -149,6 +153,9 @@ def _results_readme() -> str:
                 f"- Budgets: {budgets} (relativ zu |V| = {_num(df['true_size'].iloc[0])})",
                 f"- Laeufe je Punkt: {df.groupby(['estimator', 'view', 'budget_rel']).size().max()}",
                 f"- Estimators: {', '.join(sorted(df['estimator'].unique()))}",
+                f"- Seed: {seed}"
+                + ("" if seed == config.DEFAULT_SEED else "  (abweichend vom Default "
+                   f"{config.DEFAULT_SEED} -- eigener Durchlauf)"),
             ]
             if "stopped_by" in df:
                 counts = df["stopped_by"].value_counts().to_dict()
@@ -163,10 +170,13 @@ def _results_readme() -> str:
                     "Codeversion und ist mit den uebrigen Ergebnissen nicht vergleichbar -- "
                     "neu rechnen.",
                 ]
-            parts += ["", "Erzeugt mit:", "", "```bash",
-                      f"python run_experiment.py --graphs {graph} \\",
-                      "    --estimators " + " ".join(sorted(df["estimator"].unique())) + " \\",
-                      "    --views " + " ".join(sorted(df["view"].unique())), "```", ""]
+            cmd = [f"python run_experiment.py --graphs {graph} \\",
+                   "    --estimators " + " ".join(sorted(df["estimator"].unique())) + " \\",
+                   "    --views " + " ".join(sorted(df["view"].unique()))]
+            if seed != config.DEFAULT_SEED:
+                cmd[-1] += " \\"
+                cmd.append(f"    --seed {seed}")
+            parts += ["", "Erzeugt mit:", "", "```bash", *cmd, "```", ""]
         elif kind == "visits":
             parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{graph}**, "
                       f"{_num(len(df))} Zeilen. Faellt beim selben Lauf ab wie die "
@@ -214,7 +224,7 @@ def _plots_readme() -> str:
         "",
     ]
     for path in sorted(config.PLOTS_DIR.glob("*.png")):
-        graph, _, slug = path.stem.partition("__")
+        graph, seed, slug = results_io.parse_stem(path.stem)
         parts.append(f"### `{path.name}`")
         parts.append("")
         if slug in specs:
@@ -223,17 +233,28 @@ def _plots_readme() -> str:
                 f"{title}",
                 "",
                 f"- Graph: **{graph}**",
+                f"- Seed: {seed}",
                 f"- Views: {', '.join(views)}",
                 f"- Estimators: {', '.join(ests)}",
                 "",
-                f"Erzeugt mit `python plot_wis.py --graphs {graph}` "
+                f"Erzeugt mit `python plot_wis.py --graphs {graph}"
+                + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}") + "` "
                 f"(Definition in `Code/plot_wis.py`, Eintrag `{slug}`).",
                 "",
             ]
+        elif slug == "walk_diagnosis":
+            parts += [f"Diagnose eines Random Walks auf **{graph}** (Seed {seed}): "
+                      "Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, "
+                      "meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py "
+                      f"--graph {graph} --views directed undirected"
+                      + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                      + "` (`Code/diagnose_walk.py`).", ""]
         elif slug == "ranges":
-            parts += [f"Uebersichtsraster fuer **{graph}**: Spalte = Kategorie, "
-                      "Zeile = Kantensicht. Erzeugt mit `python plot_results.py "
-                      f"--graphs {graph}` (`plotting/ranges.py`).", ""]
+            parts += [f"Uebersichtsraster fuer **{graph}** (Seed {seed}): "
+                      "Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit "
+                      f"`python plot_results.py --graphs {graph}"
+                      + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                      + "` (`plotting/ranges.py`).", ""]
         else:
             parts += ["Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich "
                       "von Hand oder mit einer aelteren Codeversion erzeugt.", ""]

@@ -80,6 +80,38 @@ gepaarten Verhaeltnisses (> 1: in dieser Sicht wird hoeher geschaetzt).
 Speicher: `undirected` und `reverse` bauen einmalig eine zweite Adjazenz auf.
 Bei den grossen Graphen ggf. je View einen eigenen Lauf starten.
 
+## Mehrere Durchlaeufe je Graph: `--seed`
+
+Der Seed bestimmt den kompletten Zufallsstrom eines Laufs. Ein zweiter Lauf mit
+anderem Seed ist damit ein zweiter, gleichberechtigter Durchlauf desselben
+Experiments -- die Art, hier zu pruefen, ob ein Ergebnis stabil ist oder am
+Zufall haengt. Alle vier Skripte nehmen `--seed`:
+
+```bash
+python run_experiment.py --graphs Slashdot0811 --seed 7
+python plot_wis.py       --graphs Slashdot0811 --seed 7   # ohne --seed: jeder vorhandene
+python plot_results.py   --graphs Slashdot0811 --seed 7
+python diagnose_walk.py  --graph  Slashdot0811 --seed 7
+```
+
+Der Seed ist dabei nirgends stillschweigend:
+
+| Wo | Wie |
+|---|---|
+| Ergebnis-CSV | Spalte `seed` in jeder Zeile |
+| Dateiname | `Slashdot0811__seed7__estimates.csv`, `..._seed7__ranges.png` |
+| Grafik | klein oben rechts, z.B. `seed 7` |
+
+Der Default-Seed (`config.DEFAULT_SEED`) bekommt **keinen** Namenszusatz --
+`Slashdot0811__estimates.csv` ist der Lauf mit Seed 42. Zwei Laeufe
+ueberschreiben sich dadurch nie gegenseitig, und die Plot-Skripte zeichnen ohne
+`--seed` jeden vorhandenen Durchlauf einzeln: Laeufe verschiedener Seeds in
+eine Spanne zu mischen waere irrefuehrend, weil die gezeigte Streuung dann
+zwei Dinge auf einmal misst.
+
+Innerhalb eines Laufs bleibt die Paarung erhalten (s.o.): der abgeleitete Strom
+haengt an (Seed, Estimator, Budget, Lauf), nicht an der View.
+
 ## Neuen Estimator hinzufuegen
 
 Zusammengesetzt (Regelfall): Modul in `estimators/methods/` anlegen mit einer

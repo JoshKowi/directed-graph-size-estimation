@@ -8,6 +8,10 @@ Der Seed haengt bewusst *nicht* von der View ab: Lauf i benutzt in jeder View
 denselben Zufallsstrom. Damit ist der Vergleich gepaart und Unterschiede gehen
 auf die Kantensicht zurueck, nicht auf RNG-Rauschen.
 
+Der uebergebene `seed` ist der Startpunkt aller dieser Stroeme. Mit einem
+anderen Seed bekommt man einen komplett anderen, gleichberechtigten Durchlauf
+desselben Experiments -- deshalb steht er in jeder Ergebniszeile.
+
 Parallelisierung: die (Budget, Estimator, Lauf)-Tripel einer View sind
 vollstaendig unabhaengig -- gleicher Graph, nur lesend, eigener Seed. Sie
 laufen ueber einen Pool mit `fork`. Der Graph wird dabei *nicht* kopiert: er
@@ -61,6 +65,7 @@ def _estimate_one(task):
     res = est.estimate(_VIEW, budget, rng)
     row = {
         "estimator": est_name,
+        "seed": seed,
         "category": category,
         "budget_rel": b,
         "budget_abs": budget,
@@ -152,7 +157,8 @@ def run_graph(
             for (b, est_name), counter in visits.items():
                 visit_rows.extend(
                     {"graph": graph.name, "view": view_name, "estimator": est_name,
-                     "budget_rel": b, "node": graph.name_of(node), "visits": count}
+                     "seed": seed, "budget_rel": b, "node": graph.name_of(node),
+                     "visits": count}
                     for node, count in counter.items()
                 )
 

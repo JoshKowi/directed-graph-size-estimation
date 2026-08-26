@@ -16,14 +16,21 @@ sampling/dead_ends.py.
 Die Kurant-Variante ist entfallen: nach der Faktor-2-Korrektur in
 estimators/formulas.py ist Kurant Eq.(6) rechnerisch identisch mit Katzir.
 
+Liegen fuer einen Graphen mehrere Seeds vor, wird jeder Satz Grafiken einzeln
+gezeichnet -- Laeufe verschiedener Zufallsstroeme in ein Bild zu mischen waere
+irrefuehrend, weil die gezeigte Spanne dann zwei Dinge auf einmal misst. Der
+Seed steht oben rechts im Bild und (ausser beim Default) im Dateinamen.
+
 Beispiel:
     python plot_wis.py --graphs Slashdot0811 gpt4o_io
+    python plot_wis.py --graphs Slashdot0811 --seed 7
 """
 
 from __future__ import annotations
 
 import argparse
 
+import config
 from experiment import results as results_io
 from plotting.compare import plot_comparison
 from plotting.style import color_for
@@ -74,16 +81,31 @@ FIGURES = [
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--graphs", nargs="+", required=True)
+    p.add_argument("--seed", type=int, default=None,
+                   help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
     args = p.parse_args()
 
     for graph in args.graphs:
-        summary = results_io.summarize(results_io.load_results(graph))
-        for slug, ests, views, title in FIGURES:
-            import config
-            path = config.PLOTS_DIR / f"{graph}__{slug}.png"
-            plot_comparison(summary, graph, ests, views, f"{graph}: {title}",
-                            path=path, colors=COLORS)
-            print("  ->", path)
+        df = results_io.load_results(graph, seed=args.seed)
+        for seed in results_io.seeds_available(df) or [config.DEFAULT_SEED]:
+            summary = results_io.summarize(df[df["seed"] == seed])
+            tag = results_io.seed_tag(seed)
+            for slug, ests, views, title in FIGURES:
+                # Ein Bild, in dem nur die Referenz uebrig ist, zeigt nichts --
+                # das passiert, wenn ein Lauf nur einen Teil der Estimators oder
+                # der Views gerechnet hat. Geprueft wird deshalb genau der
+                # Ausschnitt, den die Grafik zeigen soll.
+                have = set(summary.loc[summary["view"].isin(views)
+                                       & summary["estimator"].isin(ests),
+                                       "estimator"].unique())
+                if len(have) < 2:
+                    print(f"  -- {slug} uebersprungen (Seed {seed}: nur "
+                          f"{sorted(have)} in {views} vorhanden)")
+                    continue
+                path = config.PLOTS_DIR / f"{graph}__{tag}{slug}.png"
+                plot_comparison(summary, graph, ests, views, f"{graph}: {title}",
+                                path=path, colors=COLORS, note=f"seed {seed}")
+                print("  ->", path)
     for path in provenance.write_readmes():
         print("  ->", path)
 

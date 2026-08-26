@@ -9,9 +9,13 @@ plus der Median, je Estimator leicht gegeneinander versetzt (sonst verdecken
 sich Verfahren mit gleichem Wert). Die y-Achse ist Schaetzung/|V| (log), die gestrichelte Linie
 bei 1.0 ist die wahre Groesse.
 
+`note` steht klein oben rechts und nennt die Herkunft des Bildes -- vor allem
+den Seed. Ohne ihn ist nicht zu erkennen, ob zwei Bilder desselben Graphen
+denselben Zufallsstrom zeigen oder zwei unabhaengige Durchlaeufe.
+
 Schnittstelle:
     plot_comparison(summary, graph_name, estimators, views, title, path,
-                    colors=None) -> matplotlib.figure.Figure
+                    colors=None, note=None) -> matplotlib.figure.Figure
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ def plot_comparison(
     title: str,
     path: Path | None = None,
     colors: dict[str, str] | None = None,
+    note: str | None = None,
 ):
     """summary: DataFrame aus experiment.results.summarize()."""
     summary = summary[(summary["graph"] == graph_name)
@@ -103,6 +108,8 @@ def plot_comparison(
     n_legend_rows = -(-len(labels) // min(len(labels), 3))
     top = 0.90 - 0.035 * n_legend_rows - 0.03 * wrapped.count("\n")
     fig.suptitle(wrapped, color=INK, fontsize=11, x=0.01, ha="left", va="top", y=0.985)
+    if note:
+        fig.text(0.99, 0.985, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
     fig.tight_layout(rect=(0, 0, 1, top))
 
     if path is None:

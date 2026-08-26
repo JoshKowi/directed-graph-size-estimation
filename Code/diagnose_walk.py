@@ -29,9 +29,15 @@ sind die Gewichte da. Der Korrekturfaktor L = mean(w)*mean(1/w) soll
 C(k,2)/n_col wieder auf |V| hochziehen. Bleibt der beobachtete Hub weit unter
 dem noetigen |V| / (C(k,2)/n_col), liegt es an den Gewichten.
 
+Der Walk haengt an einem einzigen Zufallsstrom -- welcher Startknoten gezogen
+wird, entscheidet auf einem gerichteten Graphen mit darueber, in welcher Senke
+er landet. Mit --seed laesst sich derselbe Graph mehrfach diagnostizieren; der
+Seed steht im Bericht, auf der Grafik und (ausser beim Default) im Dateinamen.
+
 Beispiele:
     python diagnose_walk.py --graph gpt4o_io --views directed undirected
     python diagnose_walk.py --graph Slashdot0811 --dead-end backtrack --budget 0.01
+    python diagnose_walk.py --graph gpt4o_io --seed 7
 """
 
 from __future__ import annotations
@@ -90,14 +96,17 @@ def _degrees(view, base):
     return out_deg, in_deg
 
 
-def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
+def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15,
+             seed: int = config.DEFAULT_SEED):
     base = build_view(graph, "directed")          # Grade immer aus dem Original
     view = build_view(graph, view_name)
     n = view.n_nodes
     budget = max(int(round(budget_rel * n)), 2)
 
     checkpoints = np.unique(np.geomspace(1, budget * 60, 220).astype(np.int64))
-    oracle = _TracingOracle(view, random.Random(f"diag|{view_name}|{dead_end}"),
+    # Der Seed haengt nicht an der View: directed und undirected starten damit
+    # beim selben Knoten und sind gepaart vergleichbar.
+    oracle = _TracingOracle(view, random.Random(f"diag|{seed}|{dead_end}"),
                             budget, config.DEFAULT_BUDGET_METRIC,
                             checkpoints=checkpoints)
     sampler = RandomWalkSampler(dead_end=DEAD_ENDS[dead_end]())
@@ -148,7 +157,7 @@ def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
     ]
 
     return {
-        "graph": graph.name, "view": view_name, "dead_end": dead_end,
+        "graph": graph.name, "view": view_name, "dead_end": dead_end, "seed": seed,
         "budget_rel": budget_rel, "budget_abs": budget, "steps": k,
         "n_nodes": n, "reachable": reach, "reachable_end": reach_end,
         "distinct": len(nodes),
@@ -163,7 +172,8 @@ def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
 
 def print_report(d):
     n = d["n_nodes"]
-    print(f"\n=== {d['graph']} / {d['view']} / dead_end={d['dead_end']} ===")
+    print(f"\n=== {d['graph']} / {d['view']} / dead_end={d['dead_end']} "
+          f"/ seed={d['seed']} ===")
     print(f"Budget {d['budget_rel']:g} = {d['budget_abs']:,} Einheiten, "
           f"{d['steps']:,} Schritte\n".replace(",", " "))
     rows = [
@@ -207,13 +217,15 @@ def main() -> None:
     p.add_argument("--dead-end", default="history", choices=sorted(DEAD_ENDS))
     p.add_argument("--budget", type=float, default=0.01)
     p.add_argument("--top", type=int, default=15)
+    p.add_argument("--seed", type=int, default=config.DEFAULT_SEED,
+                   help=f"Zufallsstrom des Walks (Default: {config.DEFAULT_SEED})")
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
 
     graph = loader.load_graph(args.graph)
     results = []
     for view in args.views:
-        d = diagnose(graph, view, args.dead_end, args.budget, args.top)
+        d = diagnose(graph, view, args.dead_end, args.budget, args.top, args.seed)
         print_report(d)
         results.append(d)
 
