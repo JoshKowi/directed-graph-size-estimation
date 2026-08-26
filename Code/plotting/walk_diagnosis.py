@@ -2,7 +2,7 @@
 
 Je View eine Zeile, vier Spalten:
 
-    1  Leiter    |V| -> erreichbar -> besucht -> effektiver Traeger ->
+    1  Leiter    |V| -> erreichbar (Seed / Endknoten) -> besucht ->
                  Schaetzung ohne/mit Gewichten. Man sieht auf einen Blick, an
                  welcher Sprosse die Schaetzung abreisst.
     2  Abdeckung verschiedene Knoten ueber die Schritte (log-log). Ein Plateau
@@ -32,14 +32,13 @@ from plotting.style import GRID, INK, INK_MUTED, PALETTE, SURFACE, apply_axes_st
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA, GREEN = PALETTE[:6]
 
 
-def _ladder(ax, d):
+def _ladder(ax, d, xlim=None):
     n = d["n_nodes"]
     rows = [
         ("|V| (truth)", n, INK_MUTED),
         ("reachable from seed", d["reachable"], BLUE),
         ("reachable from end node", d["reachable_end"], MAGENTA),
         ("distinct visited", d["distinct"], AQUA),
-        ("effective support", d["n_eff"], YELLOW),
         ("estimate, no weights", d["uis"], ORANGE),
         ("estimate, 1/deg_out", d["wis"], GREEN),
     ]
@@ -48,7 +47,9 @@ def _ladder(ax, d):
             color=[c for _, _, c in rows], height=0.62)
     ax.set_xscale("log")
     ax.set_yticks(y, [lbl for lbl, _, _ in rows], fontsize=8)
-    ax.set_xlim(max(min(v for _, v, _ in rows) * 0.3, 1e-1), n * 3)
+    # Ohne gemeinsame Skala waeren die Balkenlaengen zwischen den Zeilen nicht
+    # vergleichbar -- eine kurze Leiste saehe dann laenger aus als eine lange.
+    ax.set_xlim(*(xlim or (max(min(v for _, v, _ in rows) * 0.3, 1e-1), n * 3)))
     for yi, (_, v, _) in zip(y, rows):
         ax.text(v * 1.35, yi, f"{v:,.0f}".replace(",", " "),
                 va="center", fontsize=8, color=INK_MUTED)
@@ -90,10 +91,13 @@ def _binned(x, y, bins=18):
 
 def _degree_panel(ax, d):
     counts, nodes = d["counts"], d["nodes"]
-    for deg, color, label, rho in (
-        (d["out_deg"][nodes], ORANGE, "out-degree", d["rho_out"]),
-        (d["in_deg"][nodes], BLUE, "in-degree", d["rho_in"]),
-    ):
+    if d.get("symmetric"):
+        # Symmetrisiert gibt es keinen Aus-/Eingangsgrad mehr, nur einen Grad.
+        series = ((d["deg_view"], AQUA, "degree", d["rho_view"]),)
+    else:
+        series = ((d["out_deg"][nodes], ORANGE, "out-degree", d["rho_out"]),
+                  (d["in_deg"][nodes], BLUE, "in-degree", d["rho_in"]))
+    for deg, color, label, rho in series:
         xs, ys = _binned(deg.astype(float), counts)
         if len(xs):
             ax.plot(xs, ys, "o-", color=color, markersize=4, linewidth=1.6,
@@ -105,15 +109,27 @@ def _degree_panel(ax, d):
     ax.legend(frameon=False, fontsize=8, labelcolor=INK_MUTED, loc="upper left")
 
 
+def _shorten(name: str, limit: int = 30) -> str:
+    """In der Mitte kuerzen, nicht am Ende.
+
+    Bei Namen wie 'Tucson Gem and Mineral Show' und '... Society' steckt der
+    Unterschied im letzten Wort -- ein Abschneiden am Ende macht sie
+    ununterscheidbar.
+    """
+    if len(name) <= limit:
+        return name
+    keep = (limit - 1) // 2
+    return f"{name[:keep].rstrip()}\u2026{name[-keep:].lstrip()}"
+
+
 def _entities(ax, d, top=10):
     rows = d["top"][:top]
     y = np.arange(len(rows))[::-1]
     ax.barh(y, [r["share"] for r in rows], color=MAGENTA, height=0.6)
     labels = []
     for r in rows:
-        name = str(r["name"])
-        name = name if len(name) <= 26 else name[:23] + "..."
-        labels.append(f"{name}\nout {r['deg_out']} / in {r['deg_in']}")
+        labels.append(f"{_shorten(str(r['name']))}\n"
+                      f"out {r['deg_out']} / in {r['deg_in']}")
     ax.set_yticks(y, labels, fontsize=7)
     ax.set_xlabel("share of all visits", color=INK_MUTED, fontsize=8)
     apply_axes_style(ax)
@@ -128,8 +144,14 @@ def plot_diagnosis(results: list[dict], path: Path | None = None) -> Path:
     fig, axes = plt.subplots(rows, 4, figsize=(21, 4.9 * rows), squeeze=False)
     fig.patch.set_facecolor(SURFACE)
 
+    lo = min(min(v for v in (d["n_nodes"], d["reachable"], d["reachable_end"],
+                            d["distinct"], d["uis"], d["wis"]))
+             for d in results)
+    hi = max(d["n_nodes"] for d in results)
+    xlim = (max(lo * 0.3, 1e-1), hi * 3)
+
     for r, d in enumerate(results):
-        _ladder(axes[r][0], d)
+        _ladder(axes[r][0], d, xlim=xlim)
         _coverage(axes[r][1], d)
         _degree_panel(axes[r][2], d)
         _entities(axes[r][3], d)

@@ -12,12 +12,16 @@ Getrennt werden sie ueber eine Leiter von Groessen, die alle dasselbe messen
 sollen -- die Zahl der Knoten -- und an der man abliest, wo es abreisst:
 
     |V|                     Wahrheit
-    erreichbar vom Seed     BFS: was der Walk ueberhaupt sehen kann   -> H1
+    erreichbar vom Seed     BFS: was der Walk am Anfang sehen koennte
+    erreichbar vom Endknoten was er, dort angekommen, noch erreichen kann -> H1
     verschieden besucht     was er gesehen hat
-    1/sum(pi^2)             effektiver Traeger: worauf er sich verteilt
-    C(k,2)/n_col            Kollisionszaehlung ohne Gewichte (schaetzt genau
-                            diesen effektiven Traeger)
+    C(k,2)/n_col            Kollisionszaehlung ohne Gewichte
     n_hat mit 1/deg_out     die eigentliche Schaetzung                 -> H2
+
+C(k,2)/n_col schaetzt im Erwartungswert genau 1/sum(pi^2), den "effektiven
+Traeger" -- ueber wie viele Knoten sich der Walk effektiv verteilt, wenn man
+die Konzentration herausrechnet. Beide Groessen getrennt auszuweisen waere
+doppelt gemoppelt, deshalb steht hier nur die geschaetzte Variante.
 
 Ein kleiner effektiver Traeger ist fuer sich *kein* Fehler: auch ein perfekter
 Walk auf einem ungerichteten Graphen konzentriert sich auf Hubs -- genau dafuer
@@ -105,11 +109,11 @@ def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
     pi = counts / counts.sum()
 
     n_col = float(np.sum(counts * (counts - 1) / 2))
-    n_eff = 1.0 / float(np.sum(pi ** 2))                 # effektiver Traeger
+    # schaetzt im Erwartungswert 1/sum(pi^2), den effektiven Traeger
     uis = (k * (k - 1) / 2) / n_col if n_col else float("nan")
 
     deg = np.array([view.degree(int(u)) for u in nodes], dtype=np.float64)
-    w = 1.0 / np.maximum(deg, 1.0)
+    w = 1.0 / np.maximum(deg, 1.0)   # Gewicht = 1/Grad in der benutzten Sicht
     # Gewichte je *Sample*, nicht je Knoten -> mit der Besuchszahl wichten
     lift = (np.sum(counts * w) / k) * (np.sum(counts / w) / k)
     wis = uis * lift
@@ -130,6 +134,10 @@ def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
     out_deg, in_deg = _degrees(view, base)
     rho_out = spearmanr(counts, out_deg[nodes]).statistic
     rho_in = spearmanr(counts, in_deg[nodes]).statistic
+    rho_view = spearmanr(counts, deg).statistic
+    # Auf der symmetrisierten Sicht gibt es keinen Aus-/Eingangsgrad mehr --
+    # dort ist nur der (eine) Grad der View aussagekraeftig.
+    symmetric = view_name == "undirected"
 
     order = np.argsort(counts)[::-1][:top]
     top_rows = [
@@ -144,9 +152,10 @@ def diagnose(graph, view_name, dead_end="history", budget_rel=0.01, top=15):
         "budget_rel": budget_rel, "budget_abs": budget, "steps": k,
         "n_nodes": n, "reachable": reach, "reachable_end": reach_end,
         "distinct": len(nodes),
-        "n_eff": n_eff, "uis": uis, "wis": wis, "lift": lift,
+        "uis": uis, "wis": wis, "lift": lift,
         "lift_needed": n / uis if uis else float("nan"),
-        "rho_out": rho_out, "rho_in": rho_in,
+        "rho_out": rho_out, "rho_in": rho_in, "rho_view": rho_view,
+        "deg_view": deg, "symmetric": symmetric,
         "coverage": oracle.coverage, "counts": counts, "nodes": nodes,
         "out_deg": out_deg, "in_deg": in_deg, "top": top_rows,
     }
@@ -162,7 +171,6 @@ def print_report(d):
         ("erreichbar vom Seed", d["reachable"]),
         ("erreichbar vom Endknoten", d["reachable_end"]),
         ("verschieden besucht", d["distinct"]),
-        ("effektiver Traeger 1/sum(pi^2)", d["n_eff"]),
         ("Schaetzung ohne Gewichte C(k,2)/n_col", d["uis"]),
         ("Schaetzung mit 1/deg_out", d["wis"]),
     ]
@@ -175,13 +183,18 @@ def print_report(d):
     print(f"\n-> {verdict}")
     print(f"Korrekturfaktor L = mean(w)*mean(1/w): beobachtet {d['lift']:.1f}, "
           f"noetig waeren {d['lift_needed']:.1f}")
-    print(f"Spearman(Besuche, Grad):  Ausgangsgrad {d['rho_out']:+.3f}   "
-          f"Eingangsgrad {d['rho_in']:+.3f}")
+    if d["symmetric"]:
+        print(f"Spearman(Besuche, Grad): {d['rho_view']:+.3f} "
+              "(symmetrisiert -- nur ein Grad)")
+    else:
+        print(f"Spearman(Besuche, Grad):  Ausgangsgrad {d['rho_out']:+.3f}   "
+              f"Eingangsgrad {d['rho_in']:+.3f}")
     print(f"\nMeistbesuchte Knoten:")
     print(f"  {'Entitaet':<46}{'Besuche':>10}{'Anteil':>9}{'deg_out':>9}{'deg_in':>9}")
     for r in d["top"]:
         name = str(r["name"])
-        name = name if len(name) <= 44 else name[:41] + "..."
+        if len(name) > 44:
+            name = f"{name[:21].rstrip()}\u2026{name[-21:].lstrip()}"
         print(f"  {name:<46}{r['visits']:>10,}{r['share']:>9.2%}"
               f"{r['deg_out']:>9}{r['deg_in']:>9}".replace(",", " "))
 
