@@ -8,7 +8,15 @@ fallen. `build()` setzt das Label nach der Konstruktion auf die Instanz.
 
 Die Random-Walk-Varianten werden als Kreuzprodukt erzeugt:
     Sackgassen-Strategie (restart | backtrack | history)
-  x Thinning             (none | simple | shifted)
+  x Umgang mit Abhaengigkeit (none | simple | shifted | margin)
+
+`margin` steht im selben Namensslot wie das Thinning, ist aber keines: es
+verwirft keine Samples, sondern laesst bei der Kollisionszaehlung Paare aus,
+die im Walk weniger als m+1 Schritte auseinanderliegen (estimators.formulas).
+Die Groesse kommt aus config.SAFETY_MARGIN und laesst sich im Namen
+ueberschreiben: `rw_plain__restart__margin20` benutzt m = 20. Solche
+Namen stehen nicht in der REGISTRY, `build()` loest sie zur Laufzeit auf --
+`names()` und `build_all()` listen deshalb nur die Default-Variante.
 
 Schnittstelle:
     REGISTRY: dict[str, Entry]
@@ -20,10 +28,12 @@ Schnittstelle:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 
+import config
 from estimators.base import Category, Estimator
 from estimators.methods import (capture_recapture, deg_weighted_independent,
                                 random_walk_collision, short_walk_independent,
@@ -54,6 +64,13 @@ for _dead_end in DEAD_ENDS:
                     dead_end=_dead_end, thinning=_thinning, formula="uis-collision"),
             Category.REALIZABLE,
         )
+    # Safety Margin: vierter Wert im Thinning-Slot, aber kein Thinning (s.o.).
+    # Immer mit thinning="none" -- beide zusammen waeren doppelt gemoppelt.
+    REGISTRY[f"rw_plain__{_dead_end}__margin"] = Entry(
+        partial(random_walk_collision.build, dead_end=_dead_end, thinning="none",
+                margin=config.SAFETY_MARGIN, formula="uis-collision"),
+        Category.REALIZABLE,
+    )
     REGISTRY[f"capture_recapture__{_dead_end}"] = Entry(
         partial(capture_recapture.build, dead_end=_dead_end), Category.REALIZABLE)
 
@@ -71,6 +88,13 @@ for _de in DEAD_ENDS:
     REGISTRY[f"wis-katzir__rw-{_de}"] = Entry(
         partial(random_walk_collision.build,
                 dead_end=_de, thinning="none", formula="wis-col-katzir"),
+        Category.REALIZABLE,
+    )
+    # dieselbe Formel mit Safety Margin -- auf `undirected` die interessantere
+    # Reihe, weil dort pi ~ deg stimmt und nur die Abhaengigkeit stoert
+    REGISTRY[f"wis-katzir__rw-{_de}__margin"] = Entry(
+        partial(random_walk_collision.build, dead_end=_de, thinning="none",
+                margin=config.SAFETY_MARGIN, formula="wis-col-katzir"),
         Category.REALIZABLE,
     )
 del _de
@@ -100,9 +124,24 @@ def register(name: str, factory: Callable[[], Estimator], category: Category) ->
     REGISTRY[name] = Entry(factory, category)
 
 
+# "...__margin20" -> Eintrag "...__margin" mit m = 20 (s. Modul-Docstring)
+_MARGIN_RE = re.compile(r"^(?P<base>.+__margin)(?P<m>\d+)$")
+
+
 def build(name: str) -> Estimator:
-    entry = REGISTRY[name]
-    est = entry.factory()
+    entry, margin = REGISTRY.get(name), None
+    if entry is None:
+        m = _MARGIN_RE.match(name)
+        if m:
+            entry, margin = REGISTRY.get(m.group("base")), int(m.group("m"))
+    if entry is None:
+        raise KeyError(
+            f"{name!r} ist kein bekannter Estimator. Bekannt sind: "
+            f"{', '.join(sorted(REGISTRY))} (dazu '...__margin<N>' fuer einen "
+            "abweichenden Safety Margin)."
+        )
+    # partial-Keywords werden von Aufruf-Keywords ueberschrieben
+    est = entry.factory() if margin is None else entry.factory(margin=margin)
     est.name = name
     est.category = entry.category  # Label erst hier, nach der Konstruktion
     return est
@@ -113,5 +152,6 @@ def names(category: Category | None = None) -> list[str]:
 
 
 def build_all(selected: list[str] | None = None, category: Category | None = None) -> list[Estimator]:
-    return [build(n) for n in (selected or names(category)) if category is None
-            or REGISTRY[n].category == category]
+    # REGISTRY.get statt [], weil dynamische Margin-Namen dort nicht stehen
+    return [build(n) for n in (selected or names(category))
+            if category is None or getattr(REGISTRY.get(n), "category", None) == category]

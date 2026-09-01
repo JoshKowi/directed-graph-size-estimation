@@ -119,6 +119,19 @@ def start_slug(node) -> str:
     return "-".join("".join(keep).split("-")).strip("-") or "start"
 
 
+# --- Safety Margin ------------------------------------------------------
+# Mindestabstand im Walk, ab dem zwei Samples als Kollision zaehlen duerfen.
+# Aufeinanderfolgende Schritte eines Random Walks sind stark korreliert: u_i
+# und u_{i+1} sind Nachbarn, u_i und u_{i+2} oft derselbe Knoten. Solche
+# Treffer sagen nichts ueber |V|, verkleinern die Schaetzung aber systematisch.
+#
+# Anders als Thinning kostet der Margin fast keine Samples -- ausgelassen
+# werden nur Paare (m*k von C(k,2), bei k=100 000 und m=10 also 0,02 %),
+# nicht Ziehungen. Der Wert sollte in der Groessenordnung der
+# Autokorrelationslaenge des Walks liegen; ueber die Estimator-Namen
+# (rw_plain__restart__margin20) ist er je Lauf ueberschreibbar.
+SAFETY_MARGIN = 10
+
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)

@@ -5,6 +5,8 @@ austauschbaren Achsen:
 
     dead_end -- "restart" | "backtrack" | "history"   (sampling.dead_ends)
     thinning -- "none" | "simple" | "shifted"         (sampling.thinning)
+    margin   -- Safety Margin: Mindestabstand im Walk, ab dem ein Paar als
+                Kollision zaehlt (estimators.formulas). 0 = aus.
     formula    -- "uis-collision" (C(k,2)/n_col) | "wis-col-katzir"
                   (beide gradkorrigiert)
 
@@ -12,6 +14,12 @@ austauschbaren Achsen:
 zusammen: der Walk zieht proportional zum Grad, das Gewicht korrigiert das.
 "uis-collision" ignoriert die Gewichte und unterstellt gleichverteilte
 Ziehungen -- die Differenz ist gerade der Preis der Gradverzerrung.
+
+Thinning und Margin sind zwei Antworten auf dasselbe Problem (Autokorrelation)
+und gehoeren nicht kombiniert: bei `thinning="simple"` mit Schritt s liegen
+benachbarte Samples des Sets bereits s Schritte auseinander, ein Margin m
+verlangt dann s*m -- fast immer zu viel. Die Registry setzt den Margin
+deshalb nur zusammen mit `thinning="none"`.
 
 Schnittstelle:
     build(dead_end, thinning, step, formula, ...) -> PipelineEstimator
@@ -21,6 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
+import config
 from estimators.formulas import FORMULAS
 from estimators.pipeline import PipelineEstimator
 from oracles.local_access import CrawlOracle
@@ -34,6 +43,7 @@ def build(
     dead_end: str = "restart",
     thinning: str = "none",
     step: int = 5,
+    margin: int = 0,
     formula: str = "uis-collision",
     n_seeds: int = 1,
     burn_in: int = 0,
@@ -45,12 +55,13 @@ def build(
                  else UniformWeighting())
 
     return PipelineEstimator(
-        name=f"rw_{formula}__{dead_end}__{thinning}",
+        name=f"rw_{formula}__{dead_end}__{thinning}"
+             + (f"__m{margin}" if margin else ""),
         oracle_cls=CrawlOracle,
         sampler=RandomWalkSampler(dead_end=DEAD_ENDS[dead_end](), n_seeds=n_seeds,
                                   burn_in=burn_in),
         weighting=weighting,
-        formula=FORMULAS[formula](),
+        formula=FORMULAS[formula](margin=margin),
         thinning=thin,
         aggregate=aggregate,
     )

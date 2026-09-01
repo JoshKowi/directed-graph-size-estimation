@@ -400,11 +400,12 @@ Zwei orthogonale Achsen, als Kreuzprodukt in der REGISTRY:
 | `backtrack` | Schritte zurueck, bis ein Vorgaenger eine andere Abzweigung hat |
 | `history` | Sprung auf einen zufaelligen Knoten der bisherigen Besuchsfolge |
 
-| Thinning | Sample-Sets aus der Trajektorie |
+| Abhaengigkeit | Wie die Autokorrelation behandelt wird |
 |---|---|
-| `none` | ein Set: die ganze Trajektorie |
+| `none` | gar nicht: ein Set, die ganze Trajektorie |
 | `simple` | ein Set: jedes n-te Sample (n=5), verwirft 4/5 des Budgets |
 | `shifted` | n Sets mit Offset 0..n-1; je Set eine Schaetzung, aggregiert per Median |
+| `margin` | **Safety Margin**, s.u. -- verwirft kein Sample, sondern Paare |
 
 Backtracking-Abfragen laufen ueber das Oracle und kosten Budget, erzeugen aber
 keine Samples -- sie sind Navigation, keine Beobachtung. Deshalb liefert
@@ -421,6 +422,71 @@ einen Vergleich der Strategien also `--views directed` fahren.
 zeigt, wuerde den Walk absorbieren -- in Slashdot0811 betrifft das 6418 Knoten
 (8,3 %). `RandomWalkSampler(allow_self_loops=False)` (Default) wertet das als
 Sackgasse, damit die dead_end-Strategie greift.
+
+### Safety Margin
+
+Der Collision-Schaetzer setzt *unabhaengige* Ziehungen voraus. Ein Walk
+liefert das Gegenteil: `u_i` und `u_{i+1}` sind Nachbarn, `u_i` und `u_{i+2}`
+oft derselbe Knoten (hin und zurueck). Solche Treffer sagen nichts ueber |V|,
+sondern nur, dass der Walk noch nicht gemischt hat -- gezaehlt machen sie
+`n_col` zu gross und die Schaetzung zu klein.
+
+Der Safety Margin laesst genau diese Paare aus, **ohne ein Sample zu
+verwerfen**: gezaehlt werden nur Paare `(i, j)` mit `j - i > m`, und die
+Normierung sinkt entsprechend mit.
+
+    n_hat = P_m / n_col_m                          (UIS)
+    n_hat = P_m * mean(w) * mean(1/w) / n_col_m    (WIS, Katzir)
+
+    P_m     = C(k,2) - (m*k - m(m+1)/2)      betrachtete Paare
+    n_col_m = #{(i,j) : i<j, j-i > m, u_i = u_j}
+
+Die Korrektur von `C(k,2)` auf `P_m` gehoert zwingend dazu -- sonst waere der
+Zaehler zu gross und die Schaetzung um genau den ausgelassenen Anteil zu hoch.
+
+Der Preis ist winzig: bei k = 100 000 und m = 10 fallen 10^6 von 5*10^9 Paaren
+weg, also 0,02 %. `simple` wirft dagegen 80 % der bezahlten Samples weg.
+
+**Gemessen** auf Slashdot0811 symmetrisiert, Median ueber 5 Laeufe,
+Schaetzung/|V|:
+
+| Estimator | 1 % | 5 % | 10 % |
+|---|---|---|---|
+| `uniform_collision` (Referenz) | 0.966 | 1.110 | 1.053 |
+| `wis-katzir__rw-restart` | 0.427 | 0.793 | 0.884 |
+| `wis-katzir__rw-restart__margin` (m=10) | **0.935** | **1.024** | **1.003** |
+| `...__margin50` | 0.910 | 1.063 | 1.012 |
+| `...__margin200` | 0.971 | 0.944 | 1.006 |
+
+Bei 1 % Budget mehr als eine Verdopplung, und der Walk liegt damit fast
+gleichauf mit gleichverteiltem Ziehen. m = 10 reicht; groessere Margins
+bringen nichts mehr.
+
+**Groesse einstellen:** Default ist `config.SAFETY_MARGIN = 10`. Ein
+abweichender Wert steht im Estimator-Namen und wird zur Laufzeit aufgeloest:
+
+```bash
+python run_experiment.py --graphs slashdot --views undirected \
+    --estimators wis-katzir__rw-restart__margin20 rw_plain__restart__margin50
+```
+
+Solche Namen stehen nicht in der REGISTRY -- `--list` zeigt nur die
+Default-Variante `__margin`.
+
+**Schnell bleibt es** durch eine Differenz statt Paar-Aufzaehlung: bei
+k = 8,5 Mio. Samples gibt es 3,6*10^13 Paare. Gerechnet wird
+
+    n_col_m = alle Kollisionen (np.unique, wie bisher)
+            - Kollisionen mit Abstand 1..m (m verschobene Array-Vergleiche)
+
+also O(k log k) + O(k*m). Gemessen bei k = 1 Mio.: 0.070 s ohne Margin,
+0.074 s mit m = 10, 0.135 s mit m = 200 -- der Zuschlag verschwindet neben dem
+Sortieraufwand, der ohnehin anfaellt.
+
+`margin` und `thinning` sind zwei Antworten auf dasselbe Problem und werden
+nicht kombiniert (bei Schritt s laegen die Samples eines Sets schon s
+auseinander, ein Margin m verlangte dann s*m Schritte). Die REGISTRY setzt den
+Margin deshalb immer mit `thinning="none"`.
 
 ## Kategorien
 
