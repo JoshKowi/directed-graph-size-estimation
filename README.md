@@ -384,15 +384,15 @@ deshalb alle Estimators mit gleichem `walk_key` einen einzigen Walk:
 python run_experiment.py --graphs slashdot --views undirected \
     --share-walks --checkpoint-budgets \
     --estimators wis-katzir__rw-restart wis-katzir__rw-restart__margin10 \
-                 rw_plain__restart__none rw_plain__restart__shifted
+                 rw-plain__restart__none rw-plain__restart__shifted
 ```
 
 Wer sich mit wem zusammentut, ergibt sich von selbst aus Oracle und Sampler:
 
 | Walk-Gruppe | Estimators |
 |---|---|
-| `CrawlOracle \| random_walk_restart` | `rw_plain__restart__*`, `wis-katzir__rw-restart*`, `rw_weighted__restart__none` |
-| `UniformNodeOracle \| uniform` | `uniform_collision`, `uniform_collision_weighted` |
+| `CrawlOracle \| random_walk_restart` | `rw-plain__restart__*`, `wis-katzir__rw-restart*`, `rw-weighted__restart__none` |
+| `UniformNodeOracle \| uniform` | `uniform-collision`, `uniform-collision__weighted` |
 | `ShortWalkIndependentOracle(steps=5) \| uniform` | `uis__walk5`, `wis-katzir__walk5` |
 
 Die Gruppierung geht ueber die Formel hinweg -- mit und ohne Gewichte laufen
@@ -517,7 +517,7 @@ Schaetzung/|V|:
 
 | Estimator | 1 % | 5 % | 10 % |
 |---|---|---|---|
-| `uniform_collision` (Referenz) | 0.966 | 1.110 | 1.053 |
+| `uniform-collision` (Referenz) | 0.966 | 1.110 | 1.053 |
 | `wis-katzir__rw-restart` | 0.427 | 0.793 | 0.884 |
 | `wis-katzir__rw-restart__margin` (m=10) | **0.935** | **1.024** | **1.003** |
 | `...__margin50` | 0.910 | 1.063 | 1.012 |
@@ -532,7 +532,7 @@ abweichender Wert steht im Estimator-Namen und wird zur Laufzeit aufgeloest:
 
 ```bash
 python run_experiment.py --graphs slashdot --views undirected \
-    --estimators wis-katzir__rw-restart__margin20 rw_plain__restart__margin50
+    --estimators wis-katzir__rw-restart__margin20 rw-plain__restart__margin50
 ```
 
 Solche Namen stehen nicht in der REGISTRY -- `--list` zeigt nur die
@@ -573,6 +573,44 @@ Walk i endet, sobald er seinen Anteil `(i+1)/n` am Budget verbraucht hat; der
 letzte laeuft bis zum Budgetende. Beide Faenge teilen sich ein Oracle und
 damit den Cache -- der zweite kommt mit seiner Haelfte dadurch weiter, was die
 Schaetzung nicht beruehrt (gezaehlt werden Knoten, nicht Anfragen).
+
+**Vier Formeln ueber denselben Faengen** (`estimators/formulas.py`):
+
+| Name | Formel | Faenge | Gewichte |
+|---|---|---|---|
+| `capture-recapture__<de>` | `n1*n2/m` (Lincoln-Petersen) | 2 | nein |
+| `...__chapman` | `(n1+1)(n2+1)/(m+1) - 1` | 2 | nein |
+| `...__schnabel` | `sum C_t*M_t / sum R_t` | k (Default 4) | nein |
+| `...__cross` | Kollisionen *zwischen* den Faengen | k | nein |
+| `...__cross-wis` | dasselbe, gradkorrigiert | k | **ja** |
+
+**Chapman** ist die verzerrungskorrigierte Form von Lincoln-Petersen und
+anders als dieses **immer definiert**: ohne Ueberschneidung liefert LP NaN,
+Chapman eine grosse, aber endliche Zahl. **Schnabel** verallgemeinert auf k
+Faenge und faellt fuer k = 2 exakt auf LP zurueck; die Zahl der Faenge steht
+im Namen (`capture-recapture__restart__schnabel8`).
+
+**Gewichte kann von diesen dreien keine nehmen** -- sie rechnen mit Mengen
+*verschiedener* Knoten, und fuer eine Korrektur nach 1/pi braeuchte man die
+Einschlusswahrscheinlichkeit `1-(1-pi)^k`. Zaehlt man stattdessen Paare *mit*
+Vielfachheit (`cross`), steht wieder Katzirs Identitaet zur Verfuegung und die
+Gewichtung ist dieselbe wie beim Collision Counting. Damit ist `cross-wis` die
+einzige Capture-Recapture-Variante, die die Gradverzerrung korrigiert.
+
+Nachgerechnet auf synthetischen Faengen (N = 2000, Median ueber 200
+Wiederholungen, je Fang 1500 Ziehungen):
+
+| | gleichverteilte Faenge | Faenge mit pi ~ deg |
+|---|---|---|
+| Lincoln-Petersen | 1996 | 1690 (0.84 x N) |
+| Chapman | 1995 | 1689 |
+| Schnabel (k=2) | 1996 | 1690 |
+| `cross` | 1988 | 1537 |
+| `cross-wis` | -- | **1998 (1.00 x N)** |
+
+Auf Slashdot symmetrisiert, Budget 1 %, Median ueber 5 Laeufe, zeigt sich
+dasselbe: die drei mengenbasierten Varianten liegen bei 0.09-0.11 x |V|,
+`cross-wis` bei 1.21.
 
 `--checkpoint-budgets` bleibt fuer Capture-Recapture ausgeschlossen: der
 Umschaltpunkt liegt bei der Haelfte des *Gesamtbudgets*, ein Praefix bei
@@ -644,7 +682,7 @@ und sammelt beliebig viele wertlose, hochkorrelierte Samples -- die Schaetzung
 haengt dann an der Abbruchkonstante statt am Verfahren. Mit einem Preis > 0
 terminiert das Budget jeden Lauf von selbst, und **jeder Estimator schoepft sein
 Budget aus**. Erst dadurch sind "erlaubtes" und "genutztes" Budget vergleichbar
--- vorher gab `uniform_collision` 98 % aus und ein Random Walk 5 %, bei gleicher
+-- vorher gab `uniform-collision` 98 % aus und ein Random Walk 5 %, bei gleicher
 Sample-Zahl.
 
 Der Preis ist damit der Regler fuer die Schrittzahl: die Decke fuer einen voll

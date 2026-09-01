@@ -4,7 +4,7 @@
 
 | Daten vom | 2026-09-01 15:54 |
 |---|---|
-| Code-Fingerabdruck | `706083040bd8` |
+| Code-Fingerabdruck | `f03e6bbab1a3` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -24,7 +24,7 @@ Jede Grafik zeigt pro Estimator und Budget die Spanne min..max ueber die
 Laeufe plus den Median, y = Schaetzung/|V| (log), gestrichelt die wahre
 Groesse bei 1.0. Die x-Achse nennt das Budget relativ und absolut.
 
-Referenzreihe in allen `wis_*`/`deadend_*`-Grafiken: `uniform_collision`.
+Referenzreihe in allen `wis_*`/`deadend_*`-Grafiken: `uniform-collision`.
 
 ## Dateien
 
@@ -36,7 +36,7 @@ UIS collision counting with a random walk -- dead-end strategies (directed)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: directed
-- Estimators: uniform_collision, rw_plain__restart__none, rw_plain__backtrack__none, rw_plain__history__none
+- Estimators: uniform-collision, rw-plain__restart__none, rw-plain__backtrack__none, rw-plain__history__none
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
 
@@ -56,7 +56,7 @@ WIS (Katzir) -- independent degree-weighted draws (directed)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: directed
-- Estimators: uniform_collision, wis-katzir__indep
+- Estimators: uniform-collision, wis-katzir__indep
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_indep__directed`).
 
@@ -68,7 +68,7 @@ WIS (Katzir) -- independent degree-weighted draws (undirected)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: undirected
-- Estimators: uniform_collision, wis-katzir__indep
+- Estimators: uniform-collision, wis-katzir__indep
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_indep__undirected`).
 
@@ -80,7 +80,7 @@ WIS with a true random walk -- all dead-end strategies (undirected)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: undirected
-- Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
+- Estimators: uniform-collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw__undirected`).
 
@@ -92,7 +92,7 @@ WIS with random walk (history) -- directed vs undirected
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: directed, undirected
-- Estimators: uniform_collision, wis-katzir__rw-history
+- Estimators: uniform-collision, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
 
@@ -136,7 +136,7 @@ WIS with a true random walk -- all dead-end strategies (undirected)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: undirected
-- Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
+- Estimators: uniform-collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw__undirected`).
 
@@ -148,7 +148,7 @@ WIS with random walk (history) -- directed vs undirected
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
 - Views: directed, undirected
-- Estimators: uniform_collision, wis-katzir__rw-history
+- Estimators: uniform-collision, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
 

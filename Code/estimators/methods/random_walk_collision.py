@@ -55,7 +55,7 @@ def build(
                  else UniformWeighting())
 
     return PipelineEstimator(
-        name=f"rw_{formula}__{dead_end}__{thinning}"
+        name=f"rw__{formula}__{dead_end}__{thinning}"
              + (f"__m{margin}" if margin else ""),
         oracle_cls=CrawlOracle,
         sampler=RandomWalkSampler(dead_end=DEAD_ENDS[dead_end](), n_seeds=n_seeds,

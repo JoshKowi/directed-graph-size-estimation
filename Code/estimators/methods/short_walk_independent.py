@@ -36,7 +36,7 @@ def build(formula: str = "wis-col-katzir", steps: int = 5) -> PipelineEstimator:
                  else UniformWeighting())
 
     return PipelineEstimator(
-        name=f"walk{steps}_{formula}",
+        name=f"walk{steps}__{formula}",
         # PipelineEstimator ruft oracle_cls(graph, rng, budget, metric) auf --
         # die Walk-Laenge kommt ueber partial dazu.
         oracle_cls=partial(ShortWalkIndependentOracle, steps=steps),

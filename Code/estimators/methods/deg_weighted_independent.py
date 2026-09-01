@@ -34,7 +34,7 @@ def build(formula: str = "wis-col-katzir") -> PipelineEstimator:
                  else UniformWeighting())
 
     return PipelineEstimator(
-        name=f"dwi_{formula}",
+        name=f"dwi__{formula}",
         oracle_cls=DegWeightedIndependentOracle,
         sampler=UniformSampler(),
         weighting=weighting,

@@ -35,6 +35,14 @@ Schnittstelle:
     class SetsFormula
         .name, .compute_sets(subsets, weights) -> float
         .extras(subsets, weights) -> dict
+    LincolnPetersen, ChapmanEstimator, SchnabelEstimator
+    CrossCollisionEstimator, WISCrossCollisionEstimator
+    SETS_FORMULAS: dict[str, type[SetsFormula]]
+
+Gewichte nehmen entgegen: WISCollisionEstimatorKatzir (je Set) und
+WISCrossCollisionEstimator (ueber Sets). Lincoln-Petersen, Chapman und
+Schnabel rechnen mit Mengen *verschiedener* Knoten -- dort gibt es keine
+saubere Gewichtung, siehe CrossCollisionEstimator.
     class CollisionCountEstimator(EstimationFormula)       -- k^2 / n_col
     class WISCollisionEstimatorKatzir(EstimationFormula)   -- gradkorrigiert (Katzir)
     FORMULAS: dict[str, type[EstimationFormula]]
@@ -236,6 +244,196 @@ class LincolnPetersen(SetsFormula):
         s1, s2 = self._sets(subsets)
         return {"n_unique_s1": len(s1), "n_unique_s2": len(s2),
                 "overlap": len(s1 & s2)}
+
+
+class ChapmanEstimator(SetsFormula):
+    """Capture-Recapture nach Chapman (1951) -- verzerrungskorrigiertes
+    Lincoln-Petersen.
+
+        n_hat = (n1+1)(n2+1)/(m+1) - 1
+
+    Zwei Vorteile gegenueber n1*n2/m: der Schaetzer ist bei kleinen
+    Stichproben praktisch erwartungstreu (exakt, wenn n1+n2 >= N, sonst mit
+    kleinem Rest), und er ist **immer definiert**. Ohne Ueberschneidung liefert
+    Lincoln-Petersen NaN -- was bei kleinen Budgets regelmaessig vorkommt --,
+    Chapman dagegen (n1+1)(n2+1)-1, also eine grosse, aber endliche Schaetzung.
+
+    Achtung: korrigiert wird die Kleinstichproben-Verzerrung, *nicht* die
+    ungleiche Fangwahrscheinlichkeit. Ein Random Walk faengt Knoten
+    proportional zum Grad; die Hubs landen in beiden Faengen, die
+    Ueberschneidung ist dadurch zu gross und n_hat zu klein. Daran aendert
+    Chapman nichts.
+    """
+
+    name = "chapman"
+
+    def compute_sets(self, subsets, weights) -> float:
+        if len(subsets) != 2:
+            raise ValueError(
+                f"Chapman braucht genau zwei Faenge, bekam {len(subsets)}. "
+                "Fuer mehr Faenge ist Schnabel zustaendig."
+            )
+        s1, s2 = ({s.node for s in part} for part in subsets)
+        m = len(s1 & s2)
+        return (len(s1) + 1) * (len(s2) + 1) / (m + 1) - 1
+
+    def extras(self, subsets, weights) -> dict:
+        s1, s2 = ({s.node for s in part} for part in subsets)
+        return {"n_unique_s1": len(s1), "n_unique_s2": len(s2),
+                "overlap": len(s1 & s2)}
+
+
+class SchnabelEstimator(SetsFormula):
+    """Capture-Recapture ueber k Faenge nach Schnabel (1938).
+
+        n_hat = sum_t (C_t * M_t) / sum_t R_t
+
+    Je Fang t: C_t die Zahl verschiedener gefangener Knoten, M_t die Zahl der
+    vor diesem Fang bereits markierten, R_t die davon wiedergefangenen. Im Kern
+    ein gewichtetes Mittel der aufeinanderfolgenden Lincoln-Petersen-
+    Schaetzungen; fuer k = 2 faellt es exakt auf Lincoln-Petersen zurueck
+    (C_2 * M_2 / R_2 = n2 * n1 / m).
+
+    Der erste Fang traegt nichts bei (M_1 = 0) und laeuft trotzdem mit durch die
+    Summe -- das spart eine Fallunterscheidung und aendert nichts.
+
+    Ohne jeden Wiederfang (sum R_t = 0) ist keine Schaetzung moeglich -> NaN.
+    Fuer diesen Fall gibt es Chapman, allerdings nur fuer zwei Faenge.
+    """
+
+    name = "schnabel"
+
+    def compute_sets(self, subsets, weights) -> float:
+        if len(subsets) < 2:
+            raise ValueError(
+                f"Schnabel braucht mindestens zwei Faenge, bekam {len(subsets)}"
+            )
+        marked: set = set()
+        num = rec = 0.0
+        for part in subsets:
+            caught = {s.node for s in part}
+            num += len(caught) * len(marked)
+            rec += len(caught & marked)
+            marked |= caught
+        return float("nan") if rec == 0 else num / rec
+
+    def extras(self, subsets, weights) -> dict:
+        marked: set = set()
+        rec = 0
+        sizes = []
+        for part in subsets:
+            caught = {s.node for s in part}
+            sizes.append(len(caught))
+            rec += len(caught & marked)
+            marked |= caught
+        return {"n_captures": len(subsets), "recaptures": rec,
+                "n_unique_total": len(marked), "n_unique_s1": sizes[0],
+                "n_unique_s2": sizes[1] if len(sizes) > 1 else 0}
+
+
+class CrossCollisionEstimator(SetsFormula):
+    """Kollisionen *zwischen* den Faengen -- die gewichtbare Form von
+    Capture-Recapture.
+
+        n_hat = P_cross / n_cross,  P_cross = sum_{t<t\'} k_t * k_t\'
+
+    n_cross zaehlt Paare (i, j) aus *verschiedenen* Faengen mit u_i == u_j,
+    Mehrfachbesuche eingeschlossen; P_cross ist die Zahl solcher Paare
+    ueberhaupt.
+
+    **Warum nicht einfach Lincoln-Petersen gewichten?** LP rechnet mit den
+    Mengen *verschiedener* Knoten: n1*n2/m. Ein Knoten zaehlt dort einmal, egal
+    wie oft er gefangen wurde. Fuer eine Gewichtung nach 1/pi braeuchte man die
+    Einschlusswahrscheinlichkeit 1-(1-pi)^k -- nichtlinear und von der
+    Fanggroesse abhaengig. Zaehlt man stattdessen *Paare mit Vielfachheit*,
+    steht wieder Katzirs Identitaet zur Verfuegung, und die Gewichtung ist
+    exakt dieselbe wie beim Collision Counting.
+
+    Herleitung wie bei WISCollisionEstimatorKatzir: fuer i, j aus
+    verschiedenen (unabhaengigen) Faengen ist P(u_i == u_j) = sum_v pi_v^2,
+    also E[n_cross] = P_cross * sum pi^2. Mit w ~ 1/pi gilt E[w] = N und
+    E[1/w] = sum pi^2, der Korrekturfaktor mean(w)*mean(1/w) hebt sum pi^2
+    also gerade weg.
+
+    Fuer w == 1 bleibt P_cross/n_cross -- die Vielfachheits-Variante von
+    Lincoln-Petersen. Sie ist mit LP *nicht* identisch: LP zaehlt Knoten, das
+    hier zaehlt Paare. Bei k Faengen (k > 2) verallgemeinert es sich von
+    selbst, ohne Schnabels Summenformel.
+    """
+
+    name = "cross-collision"
+    weighted = False
+
+    def _counts(self, subsets):
+        """(n_cross, P_cross, alle Knoten) -- ohne Paare aufzuzaehlen.
+
+        Kollisionen zwischen den Faengen = alle Kollisionen minus die
+        innerhalb der Faenge. Beides ueber np.unique, also O(K log K); die
+        Zahl der Paare selbst waere bei grossen Stichproben nicht darstellbar.
+        """
+        nodes = [np.fromiter((s.node for s in part), dtype=np.int64,
+                             count=len(part)) for part in subsets]
+        sizes = np.array([len(x) for x in nodes], dtype=np.float64)
+
+        def collisions(arr):
+            if arr.size < 2:
+                return 0.0
+            _, counts = np.unique(arr, return_counts=True)
+            return float(np.sum(counts * (counts - 1) / 2))
+
+        total = collisions(np.concatenate(nodes)) if nodes else 0.0
+        within = sum(collisions(x) for x in nodes)
+        n_cross = total - within
+        p_cross = float((sizes.sum() ** 2 - np.sum(sizes ** 2)) / 2)
+        return n_cross, p_cross, nodes
+
+    def compute_sets(self, subsets, weights) -> float:
+        if len(subsets) < 2:
+            raise ValueError(
+                f"Kollisionen zwischen Faengen brauchen mindestens zwei, "
+                f"bekam {len(subsets)}"
+            )
+        n_cross, p_cross, _ = self._counts(subsets)
+        if n_cross == 0 or p_cross <= 0:
+            return float("nan")
+        value = p_cross / n_cross
+        if self.weighted:
+            w = np.concatenate([np.asarray(x, dtype=float) for x in weights])
+            value *= w.mean() * (1.0 / w).mean()
+        return value
+
+    def extras(self, subsets, weights) -> dict:
+        n_cross, p_cross, nodes = self._counts(subsets)
+        marked: set = set()
+        for x in nodes:
+            marked |= set(x.tolist())
+        return {"n_captures": len(subsets), "cross_collisions": n_cross,
+                "cross_pairs": p_cross, "n_unique_total": len(marked)}
+
+
+class WISCrossCollisionEstimator(CrossCollisionEstimator):
+    """Wie CrossCollisionEstimator, aber mit Gradkorrektur (Katzir).
+
+    Auf `undirected` ist das die richtige Rechnung fuer einen Random Walk:
+    er faengt Knoten proportional zum Grad, w = 1/deg korrigiert das. Auf
+    `directed` gilt pi ~ deg_out nicht -- dort zeigt der Vergleich mit der
+    ungewichteten Variante, was die Korrektur anrichtet.
+    """
+
+    name = "wis-cross-collision"
+    weighted = True
+
+
+# Formeln, die alle Sample-Sets gemeinsam auswerten (Capture-Recapture).
+# Getrennt von FORMULAS, weil sie eine andere Signatur haben und ein Thinning
+# brauchen, das mehrere Sets liefert -- siehe sampling.thinning.ByWalkThinning.
+SETS_FORMULAS: dict[str, type[SetsFormula]] = {
+    "lincoln-petersen": LincolnPetersen,
+    "chapman": ChapmanEstimator,
+    "schnabel": SchnabelEstimator,
+    "cross": CrossCollisionEstimator,
+    "cross-wis": WISCrossCollisionEstimator,
+}
 
 
 # Nur die Formeln, die je Set rechnen: die generischen build()-Funktionen

@@ -1,8 +1,14 @@
-"""Capture-Recapture (Lincoln-Petersen) als Pipeline: zwei Faenge, eine Formel.
+"""Capture-Recapture als Pipeline: k Faenge, eine Formel darueber.
 
-    n_hat = |S1| * |S2| / |S1 geschnitten S2|
+    lincoln-petersen  n_hat = n1*n2/m                  zwei Faenge
+    chapman           n_hat = (n1+1)(n2+1)/(m+1) - 1   zwei Faenge, immer definiert
+    schnabel          n_hat = sum C_t*M_t / sum R_t    beliebig viele Faenge
+    cross             Kollisionen zwischen den Faengen, beliebig viele
+    cross-wis         dasselbe mit Gradkorrektur -- die einzige Variante, die
+                      Gewichte nutzen kann (Begruendung in formulas.py)
 
-mit |S1|, |S2| als Anzahl *verschiedener* besuchter Knoten je Fang.
+mit n1, n2 als Anzahl *verschiedener* besuchter Knoten je Fang und m ihrer
+Ueberschneidung. Die Formeln stehen in estimators/formulas.py.
 
 Das Verfahren schreibt nicht nur die Formel vor, sondern auch die Form der
 Ziehung: es braucht zwei Stichproben mit eigenem Einstieg. Ein Halbieren
@@ -25,29 +31,39 @@ liegt am Verfahren, nicht an der Umsetzung -- der Runner erkennt es daran,
 dass die Methode fehlt.
 
 Schnittstelle:
-    build(dead_end="restart", n_captures=2, ...) -> PipelineEstimator
+    build(dead_end="restart", formula="lincoln-petersen", n_captures=2, ...)
+        -> PipelineEstimator
 """
 
 from __future__ import annotations
 
-from estimators.formulas import LincolnPetersen
+from estimators.formulas import SETS_FORMULAS
 from estimators.pipeline import PipelineEstimator
 from oracles.local_access import CrawlOracle
 from sampling.dead_ends import DEAD_ENDS
 from sampling.samplers import RandomWalkSampler
 from sampling.thinning import ByWalkThinning
-from weighting.schemes import UniformWeighting
+from weighting.schemes import InverseDegreeWeighting, UniformWeighting
 
 
-def build(dead_end: str = "restart", n_captures: int = 2, n_seeds: int = 1,
+def build(dead_end: str = "restart", formula: str = "lincoln-petersen",
+          n_captures: int = 2, n_seeds: int = 1,
           burn_in: int = 0) -> PipelineEstimator:
+    if formula in ("lincoln-petersen", "chapman") and n_captures != 2:
+        raise ValueError(
+            f"{formula!r} ist auf zwei Faenge festgelegt, n_captures="
+            f"{n_captures} geht nur mit 'schnabel' oder 'cross'."
+        )
     est = PipelineEstimator(
-        name=f"capture_recapture__{dead_end}",
+        name=f"capture-recapture__{dead_end}__{formula}",
         oracle_cls=CrawlOracle,
         sampler=RandomWalkSampler(dead_end=DEAD_ENDS[dead_end](), n_seeds=n_seeds,
                                   n_walks=n_captures, burn_in=burn_in),
-        weighting=UniformWeighting(),   # Lincoln-Petersen zaehlt nur Knoten
-        formula=LincolnPetersen(),
+        # Nur die Kollisions-Variante kann Gewichte nutzen; die mengenbasierten
+        # Formeln (LP, Chapman, Schnabel) zaehlen Knoten und ignorieren sie.
+        weighting=(InverseDegreeWeighting() if SETS_FORMULAS[formula].weighted
+                   else UniformWeighting()),
+        formula=SETS_FORMULAS[formula](),
         thinning=ByWalkThinning(n_walks=n_captures),
     )
     # s. Modul-Docstring: der Umschaltpunkt haengt am Gesamtbudget, ein Praefix

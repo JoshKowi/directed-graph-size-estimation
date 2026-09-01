@@ -84,11 +84,11 @@ class ByWalkThinning(Thinning):
     Set entstehen, sonst rechnete die Formel still mit einem Fang weiter.
 
     Bewusst *nicht* in THINNINGS: dieses dict erzeugt in estimators/__init__.py
-    das Kreuzprodukt rw_plain__<dead_end>__<thinning>, und mit dem
+    das Kreuzprodukt rw-plain__<dead_end>__<thinning>, und mit dem
     ueblichen Ein-Walk-Sampler waere das hier nur ein umstaendliches "none".
     """
 
-    name = "by_walk"
+    name = "by-walk"
 
     def __init__(self, n_walks: int = 2) -> None:
         self.n_walks = n_walks

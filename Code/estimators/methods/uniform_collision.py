@@ -19,7 +19,7 @@ from weighting.schemes import UniformWeighting
 
 def build(formula: str = "uis-collision") -> PipelineEstimator:
     return PipelineEstimator(
-        name="uniform_collision",
+        name="uniform-collision",
         oracle_cls=UniformNodeOracle,
         sampler=UniformSampler(),
         weighting=UniformWeighting(),

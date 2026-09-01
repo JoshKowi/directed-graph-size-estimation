@@ -1,6 +1,6 @@
 """CLI: die vier WIS-Vergleichsgrafiken erzeugen.
 
-Alle vier enthalten "uniform_collision" als Referenz (gleichverteiltes Ziehen,
+Alle vier enthalten "uniform-collision" als Referenz (gleichverteiltes Ziehen,
 ungewichtete Collision-Formel) und die gestrichelte Linie bei 1.0.
 
     1  wis_indep__undirected   unabhaengige gradgewichtete Ziehungen, symmetrisiert
@@ -36,7 +36,7 @@ from plotting.compare import plot_comparison
 from plotting.style import color_for
 import provenance
 
-REFERENCE = "uniform_collision"
+REFERENCE = "uniform-collision"
 
 # Feste Farbzuordnung ueber alle vier Grafiken: derselbe Estimator hat
 # ueberall dieselbe Farbe, damit die Bilder nebeneinander lesbar sind.
@@ -51,9 +51,9 @@ SLOTS = {
     "wis-katzir__rw-restart": 1,
     "wis-katzir__rw-backtrack": 3,
     "wis-katzir__rw-history": 5,
-    "rw_plain__restart__none": 1,
-    "rw_plain__backtrack__none": 3,
-    "rw_plain__history__none": 5,
+    "rw-plain__restart__none": 1,
+    "rw-plain__backtrack__none": 3,
+    "rw-plain__history__none": 5,
 }
 COLORS = {e: color_for(i) for e, i in SLOTS.items()}
 
@@ -72,8 +72,8 @@ FIGURES = [
      [REFERENCE, "wis-katzir__rw-history"], ["directed", "undirected"],
      "WIS with random walk (history) -- directed vs undirected"),
     ("deadend_uis__directed",
-     [REFERENCE, "rw_plain__restart__none", "rw_plain__backtrack__none",
-      "rw_plain__history__none"], ["directed"],
+     [REFERENCE, "rw-plain__restart__none", "rw-plain__backtrack__none",
+      "rw-plain__history__none"], ["directed"],
      "UIS collision counting with a random walk -- dead-end strategies (directed)"),
 ]
 

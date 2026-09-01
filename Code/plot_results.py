@@ -6,8 +6,8 @@ Teilmenge aus.
 
 Beispiele:
     python plot_results.py --graphs Slashdot0811
-    python plot_results.py --match uniform rw_plain__backtrack
-    python plot_results.py --estimators uniform_collision_weighted rw_plain__restart__none
+    python plot_results.py --match uniform rw-plain__backtrack
+    python plot_results.py --estimators uniform-collision__weighted rw-plain__restart__none
     python plot_results.py --graphs Slashdot0811 --seed 7
 
 Je Graph *und* Seed entsteht ein eigenes Bild: verschiedene Seeds sind

@@ -129,8 +129,15 @@ def start_slug(node) -> str:
 # werden nur Paare (m*k von C(k,2), bei k=100 000 und m=10 also 0,02 %),
 # nicht Ziehungen. Der Wert sollte in der Groessenordnung der
 # Autokorrelationslaenge des Walks liegen; ueber die Estimator-Namen
-# (rw_plain__restart__margin20) ist er je Lauf ueberschreibbar.
+# (rw-plain__restart__margin20) ist er je Lauf ueberschreibbar.
 SAFETY_MARGIN = 10
+
+# Zahl der Faenge fuer die Schnabel-Variante von Capture-Recapture. Mehr Faenge
+# heisst: jeder einzelne ist kleiner (das Budget wird geteilt), dafuer gibt es
+# mehr Wiederfang-Information. Wo das Optimum liegt, ist eine empirische Frage
+# -- ueber den Estimator-Namen (capture-recapture__restart__schnabel8) ist der
+# Wert je Lauf ueberschreibbar.
+DEFAULT_CAPTURES = 4
 
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
