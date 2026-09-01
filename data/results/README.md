@@ -4,7 +4,7 @@
 
 | Daten vom | 2026-09-01 15:54 |
 |---|---|
-| Code-Fingerabdruck | `5d874fad6e4e` |
+| Code-Fingerabdruck | `706083040bd8` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |

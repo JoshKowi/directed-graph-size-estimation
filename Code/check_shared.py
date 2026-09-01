@@ -33,8 +33,19 @@ FIELDS = ("queries", "unique_nodes", "cached_queries", "n_random_node",
 
 
 def compare(view, group, budgets, seed: str) -> list[str]:
-    """Abweichungen als Textzeilen; leere Liste heisst identisch."""
-    shared = estimate_group(group, view, budgets, random.Random(seed))
+    """Abweichungen als Textzeilen; leere Liste heisst identisch.
+
+    Gruppen, deren Ziehung vom Budget abhaengt (capture_recapture), werden je
+    Budget einzeln geteilt -- mehrere Budgets aus einem Lauf sind dort nicht
+    zulaessig und estimate_group lehnt es auch ab.
+    """
+    nestable = all(getattr(e, "supports_nested", False) for e in group)
+    if nestable:
+        shared = estimate_group(group, view, budgets, random.Random(seed))
+    else:
+        shared = {}
+        for b in budgets:
+            shared.update(estimate_group(group, view, [b], random.Random(seed)))
     problems = []
     for est in group:
         for b in budgets:

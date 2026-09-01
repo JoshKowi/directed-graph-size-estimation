@@ -85,6 +85,16 @@ _VIEW: Graph | None = None
 _COLLECT_VISITS = False
 
 
+def _can_nest(est) -> bool:
+    """Darf dieser Estimator mehrere Budgets aus einem Lauf ablesen?
+
+    Nein, wenn die Ziehung selbst vom Budget abhaengt: capture_recapture
+    schaltet bei der Haelfte des Gesamtbudgets zwischen den Faengen um, ein
+    Praefix waere dort nicht derselbe Lauf.
+    """
+    return hasattr(est, "estimate_nested") and getattr(est, "supports_nested", False)
+
+
 def _row(est_name, category, seed, start, b, budget, run, res, seconds, nested,
          walk_group):
     return {
@@ -234,8 +244,7 @@ def run_graph(
 
             tasks = []
             for group, key in packs:
-                nest = nested_budgets and all(hasattr(e, "estimate_nested")
-                                              for e in group)
+                nest = nested_budgets and all(_can_nest(e) for e in group)
                 ladders = [ladder] if nest else [[pair] for pair in ladder]
                 names = tuple(e.name for e in group)
                 cats = tuple(str(e.category) for e in group)
@@ -245,8 +254,7 @@ def run_graph(
 
             plain = len(estimators) * len(budgets) * n_runs
             if nested_budgets or share_walks:
-                excluded = sorted({e.name for e in estimators
-                                   if not hasattr(e, "estimate_nested")})
+                excluded = sorted({e.name for e in estimators if not _can_nest(e)})
                 what = " + ".join(
                     x for x in (("genestete Budgets" if nested_budgets else ""),
                                 ("geteilte Walks" if share_walks else "")) if x)

@@ -11,7 +11,7 @@ alle Estimators mit gleichem Oracle und gleichem Sampler-Schluessel einen
 einzigen Walk teilen.
 
 Schnittstelle:
-    class Sample            -- node (Original-Key), degree, step
+    class Sample            -- node (Original-Key), degree, step, walk
     class Sampler
         .sample(oracle) -> list[Sample]   (laeuft, bis das Budget erschoepft ist)
         .key() -> str                     (gleiche Ziehung == gleicher Schluessel)
@@ -29,6 +29,9 @@ class Sample:
     node: Any  # Original-Knotenname aus der Adjazenzliste
     degree: int
     step: int
+    # Aus welchem Durchgang das Sample stammt. Nur Sampler, die mehrere Walks
+    # laufen (Capture-Recapture), setzen das -- alle anderen bleiben bei 0.
+    walk: int = 0
 
 
 class Sampler(ABC):

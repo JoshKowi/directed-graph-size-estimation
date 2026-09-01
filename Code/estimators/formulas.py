@@ -20,9 +20,21 @@ Alle Formeln kennen den Safety Margin (`margin`, Default 0 = aus): mit m > 0
 zaehlen nur Paare mit Abstand > m im Walk als Kollision, und die Normierung
 sinkt entsprechend. Siehe _collisions() und _pair_count().
 
+Zwei Arten von Formeln:
+
+    EstimationFormula  rechnet je Sample-Set eine Zahl; die Pipeline ruft sie
+                       fuer jedes Set und aggregiert (Default: Median).
+    SetsFormula        rechnet *einmal* ueber alle Sets gemeinsam. Das braucht
+                       Capture-Recapture: |S1|*|S2|/|S1 geschnitten S2| laesst
+                       sich nicht je Set und danach mitteln.
+
 Schnittstelle:
     class EstimationFormula
         .name, .margin, .compute(samples, weights) -> float
+        .extras(subsets, weights) -> dict
+    class SetsFormula
+        .name, .compute_sets(subsets, weights) -> float
+        .extras(subsets, weights) -> dict
     class CollisionCountEstimator(EstimationFormula)       -- k^2 / n_col
     class WISCollisionEstimatorKatzir(EstimationFormula)   -- gradkorrigiert (Katzir)
     FORMULAS: dict[str, type[EstimationFormula]]
@@ -107,6 +119,11 @@ class EstimationFormula(ABC):
     def compute(self, samples: Sequence[Sample], weights: np.ndarray) -> float:
         """Schaetzwert fuer |V| aus gewichteten Samples."""
 
+    def extras(self, subsets, weights) -> dict:
+        """Verfahrensspezifische Zwischenwerte fuer die Ergebnis-CSV
+        (Praefix `extra_`). Default: keine."""
+        return {}
+
 
 class CollisionCountEstimator(EstimationFormula):
     """Collision Counting: n_hat = C(k,2) / n_col.
@@ -170,6 +187,61 @@ class WISCollisionEstimatorKatzir(EstimationFormula):
         return pairs * correction / collisions
 
 
+class SetsFormula(ABC):
+    """Formel, die alle Sample-Sets *gemeinsam* auswertet."""
+
+    name: str = "sets-formula"
+    weighted: bool = False
+
+    @abstractmethod
+    def compute_sets(self, subsets, weights) -> float:
+        """Schaetzwert fuer |V| aus mehreren Sample-Sets."""
+
+    def extras(self, subsets, weights) -> dict:
+        return {}
+
+
+class LincolnPetersen(SetsFormula):
+    """Capture-Recapture: n_hat = |S1| * |S2| / |S1 geschnitten S2|.
+
+    |S1| und |S2| sind die Zahlen *verschiedener* besuchter Knoten je Fang.
+    Ohne Ueberschneidung ist keine Schaetzung moeglich -> NaN.
+
+    Der Schaetzer unterstellt, dass die beiden Faenge unabhaengig sind und
+    jeder Knoten in beiden dieselbe Fangwahrscheinlichkeit hat. Ein Random Walk
+    verletzt beides; genau deshalb steht das Verfahren hier im Vergleich.
+
+    Zwei Sets sind Pflicht: mit einem laesst sich nichts schneiden, mit dreien
+    waere Lincoln-Petersen die falsche Formel (dann Schnabel/Chapman). Lieber
+    hier scheitern als still etwas anderes rechnen.
+    """
+
+    name = "lincoln-petersen"
+
+    def _sets(self, subsets):
+        return [{s.node for s in part} for part in subsets]
+
+    def compute_sets(self, subsets, weights) -> float:
+        if len(subsets) != 2:
+            raise ValueError(
+                f"Lincoln-Petersen braucht genau zwei Faenge, bekam "
+                f"{len(subsets)}. Passt das Thinning zum Sampler "
+                "(ByWalkThinning(n_walks) und RandomWalkSampler(n_walks))?"
+            )
+        s1, s2 = self._sets(subsets)
+        overlap = len(s1 & s2)
+        return float("nan") if overlap == 0 else len(s1) * len(s2) / overlap
+
+    def extras(self, subsets, weights) -> dict:
+        s1, s2 = self._sets(subsets)
+        return {"n_unique_s1": len(s1), "n_unique_s2": len(s2),
+                "overlap": len(s1 & s2)}
+
+
+# Nur die Formeln, die je Set rechnen: die generischen build()-Funktionen
+# konstruieren daraus mit FORMULAS[name](margin=...). LincolnPetersen steht
+# bewusst nicht drin -- es braucht mehrere Sets und wird direkt von
+# estimators/methods/capture_recapture.py gebaut.
 FORMULAS: dict[str, type[EstimationFormula]] = {
     "uis-collision": CollisionCountEstimator,
     "wis-col-katzir": WISCollisionEstimatorKatzir,

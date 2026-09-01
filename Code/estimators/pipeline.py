@@ -51,6 +51,7 @@ import numpy as np
 
 import config
 from estimators.base import EstimateResult, Estimator
+from estimators.formulas import SetsFormula
 from graphs.graph import Graph
 from sampling.thinning import NoThinning
 
@@ -71,6 +72,11 @@ def _oracle_key(oracle_cls) -> str:
 
 
 class PipelineEstimator(Estimator):
+    # Duerfen mehrere Budgets aus einem Lauf abgelesen werden? Nur falsch, wenn
+    # die Ziehung selbst vom Budget abhaengt -- siehe
+    # estimators/methods/capture_recapture.py.
+    supports_nested = True
+
     def __init__(
         self,
         name: str,
@@ -136,10 +142,18 @@ class PipelineEstimator(Estimator):
     def evaluate(self, trace, cost: dict, visits) -> EstimateResult:
         """Aus einer (ggf. abgeschnittenen) Trajektorie eine Schaetzung machen."""
         subsets = self.thinning.apply(trace)
-        values = np.array(
-            [self.formula.compute(s, self.weighting.weights(s)) for s in subsets],
-            dtype=float,
-        )
+        weights = [self.weighting.weights(s) for s in subsets]
+
+        if isinstance(self.formula, SetsFormula):
+            # Formel ueber alle Sets gemeinsam (Capture-Recapture): hier gibt es
+            # nichts zu aggregieren, die Sets sind Teile *einer* Schaetzung.
+            values = np.array([self.formula.compute_sets(subsets, weights)],
+                              dtype=float)
+        else:
+            values = np.array(
+                [self.formula.compute(s, w) for s, w in zip(subsets, weights)],
+                dtype=float,
+            )
         valid = values[~np.isnan(values)]
         value = float(self.aggregate(valid)) if valid.size else float("nan")
 
@@ -151,6 +165,7 @@ class PipelineEstimator(Estimator):
                 "n_samples": len(trace),
                 "n_subsets": len(subsets),
                 "n_valid": int(valid.size),
+                **self.formula.extras(subsets, weights),
                 # Streuung der Einzelschaetzungen *innerhalb* eines Walks --
                 # im Vergleich zur Streuung ueber die Laeufe zeigt sie, ob das
                 # Thinning die Abhaengigkeit wirklich reduziert.
@@ -181,6 +196,14 @@ def estimate_group(estimators, graph: Graph, budgets, rng: random.Random
         )
 
     budgets = sorted({int(b) for b in budgets})
+    if len(budgets) > 1 and not all(getattr(e, "supports_nested", False)
+                                    for e in estimators):
+        raise ValueError(
+            "Mehrere Budgets aus einem Lauf gehen nur, wenn die Ziehung nicht "
+            "vom Budget abhaengt. Hier nicht der Fall (capture_recapture "
+            "schaltet bei der Haelfte des Gesamtbudgets um) -- je Budget einzeln "
+            "aufrufen."
+        )
     top = budgets[-1]
     owner = estimators[0]
     trace, oracle = owner.run_walk(graph, top, rng, checkpoints=budgets[:-1])

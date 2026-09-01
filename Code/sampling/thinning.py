@@ -14,7 +14,7 @@ vergroessert den Abstand zwischen den benutzten Samples.
 Schnittstelle:
     class Thinning
         .name, .apply(trace) -> list[list[Sample]]
-    NoThinning, SimpleThinning, ShiftedThinning
+    NoThinning, SimpleThinning, ShiftedThinning, ByWalkThinning
     THINNINGS: dict[str, type[Thinning]]
 """
 
@@ -71,6 +71,34 @@ class ShiftedThinning(Thinning):
 
     def apply(self, trace: Sequence[Sample]) -> list[list[Sample]]:
         return [list(trace[offset :: self.step]) for offset in range(self.step)]
+
+
+class ByWalkThinning(Thinning):
+    """Ein Set je Durchgang des Samplers (`Sample.walk`).
+
+    Die Aufteilung, die Capture-Recapture braucht: zwei Faenge, die nicht einer
+    die Fortsetzung des anderen sind (siehe RandomWalkSampler mit n_walks > 1).
+
+    Die Zahl der Sets steht fest und wird nicht aus dem Trace abgeleitet: kam
+    der zweite Fang gar nicht mehr zum Zug, muss trotzdem ein -- dann leeres --
+    Set entstehen, sonst rechnete die Formel still mit einem Fang weiter.
+
+    Bewusst *nicht* in THINNINGS: dieses dict erzeugt in estimators/__init__.py
+    das Kreuzprodukt rw_plain__<dead_end>__<thinning>, und mit dem
+    ueblichen Ein-Walk-Sampler waere das hier nur ein umstaendliches "none".
+    """
+
+    name = "by_walk"
+
+    def __init__(self, n_walks: int = 2) -> None:
+        self.n_walks = n_walks
+
+    def apply(self, trace: Sequence[Sample]) -> list[list[Sample]]:
+        sets: list[list[Sample]] = [[] for _ in range(self.n_walks)]
+        for s in trace:
+            if s.walk < self.n_walks:
+                sets[s.walk].append(s)
+        return sets
 
 
 THINNINGS: dict[str, type[Thinning]] = {

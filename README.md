@@ -553,6 +553,35 @@ nicht kombiniert (bei Schritt s laegen die Samples eines Sets schon s
 auseinander, ein Margin m verlangte dann s*m Schritte). Die REGISTRY setzt den
 Margin deshalb immer mit `thinning="none"`.
 
+### Capture-Recapture: derselbe Bauplan
+
+`n_hat = |S1| * |S2| / |S1 geschnitten S2|` ist nicht nur eine andere Formel --
+das Verfahren schreibt auch die *Form der Ziehung* vor: zwei Faenge mit
+eigenem Einstieg. Ein Halbieren derselben Trajektorie taugt nicht, die zweite
+Haelfte liefe dort weiter, wo die erste aufgehoert hat.
+
+Trotzdem passt es in dieselbe Pipeline, weil `Thinning.apply()` ohnehin eine
+*Liste* von Sample-Sets liefert. Der Unterschied sitzt an drei Stellen:
+
+| Stufe | Collision Counting | Capture-Recapture |
+|---|---|---|
+| Sampler | `RandomWalkSampler(n_walks=1)` | `n_walks=2`, Samples tragen `walk` |
+| Thinning | `none` / `simple` / `shifted` / `margin` | `ByWalkThinning` -- ein Set je Fang |
+| Formel | je Set rechnen, dann aggregieren | **einmal ueber alle Sets** (`SetsFormula`) |
+
+Walk i endet, sobald er seinen Anteil `(i+1)/n` am Budget verbraucht hat; der
+letzte laeuft bis zum Budgetende. Beide Faenge teilen sich ein Oracle und
+damit den Cache -- der zweite kommt mit seiner Haelfte dadurch weiter, was die
+Schaetzung nicht beruehrt (gezaehlt werden Knoten, nicht Anfragen).
+
+`--checkpoint-budgets` bleibt fuer Capture-Recapture ausgeschlossen: der
+Umschaltpunkt liegt bei der Haelfte des *Gesamtbudgets*, ein Praefix bei
+Budget b waere also nicht derselbe Lauf wie ein eigenstaendiger b-Lauf (der
+bei b/2 umschaltete). Das Flag `PipelineEstimator.supports_nested` haelt das
+fest, der Runner nimmt den Estimator dort heraus und sagt es im Log.
+`--share-walks` geht dagegen: das Verfahren bildet wegen `n_walks=2` eine
+eigene Walk-Gruppe.
+
 ## Kategorien
 
 `Category.COMPARISON` (nur zum Vergleich) vs. `Category.REALIZABLE` (real

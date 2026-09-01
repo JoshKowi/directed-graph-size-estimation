@@ -18,9 +18,11 @@ Slashdot0811:
 
 Praktische Folge fuer Experimente: ein Vergleich der drei Strategien ist nur
 auf `directed` (oder `reverse`) aussagekraeftig. Auf `undirected` laufen sie
-denselben Algorithmus; beobachtete Unterschiede sind dort reines RNG-Rauschen,
+denselben Algorithmus. Beobachtete Unterschiede sind dort reines RNG-Rauschen,
 weil der Seed in experiment.runner den Estimator-Namen enthaelt und die
-Varianten deshalb auf verschiedenen Zufallsstroemen laufen.
+Varianten deshalb auf verschiedenen Zufallsstroemen laufen -- mit
+`--share-walks` faellt auch das weg, dort liefern die drei Strategien auf
+`undirected` exakt dieselben Zahlen.
 
 Sackgasse heisst: *gar kein* nutzbarer Nachbar. Ein Knoten, dessen Nachbarn
 alle schon besucht sind, ist keine -- Wiederbesuche sind normales Laufen und

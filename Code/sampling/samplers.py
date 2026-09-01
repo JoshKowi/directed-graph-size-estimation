@@ -7,6 +7,8 @@ Schnittstelle:
 
 from __future__ import annotations
 
+import math
+
 from oracles.base import BudgetExceeded
 from sampling.base import Sample, Sampler
 from sampling.dead_ends import DeadEndStrategy, RestartToStart
@@ -37,6 +39,13 @@ class RandomWalkSampler(Sampler):
     weitergeht (siehe sampling.dead_ends). `restart_prob` ist davon unabhaengig
     und teleportiert zusaetzlich mit fester Wahrscheinlichkeit zum Anfang.
 
+    `n_walks` > 1 laesst mehrere Walks nacheinander laufen, jeder mit eigenem
+    Einstieg; die Samples tragen den Index in `Sample.walk`. Das ist die Form,
+    die Capture-Recapture braucht -- zwei Faenge, die nicht einer die
+    Fortsetzung des anderen sind. Walk i endet, sobald er seinen Anteil am
+    Budget (i+1)/n verbraucht hat; der letzte laeuft bis zum Budgetende. Bleibt
+    ein Fang vorzeitig stehen, faellt sein Rest dem naechsten zu.
+
     `allow_self_loops=False` (Default) behandelt eine Kante auf den eigenen
     Knoten nicht als Weiterkommen. Das ist noetig, weil ein Knoten, dessen
     einzige Kante auf ihn selbst zeigt, den Walk sonst absorbiert -- in
@@ -54,12 +63,14 @@ class RandomWalkSampler(Sampler):
         self,
         dead_end: DeadEndStrategy | None = None,
         n_seeds: int = 1,
+        n_walks: int = 1,
         restart_prob: float = 0.0,
         burn_in: int = 0,
         allow_self_loops: bool = False,
     ) -> None:
         self.dead_end = dead_end or RestartToStart()
         self.n_seeds = n_seeds
+        self.n_walks = n_walks
         self.restart_prob = restart_prob
         self.burn_in = burn_in
         self.allow_self_loops = allow_self_loops
@@ -68,8 +79,9 @@ class RandomWalkSampler(Sampler):
     def key(self) -> str:
         """Alles, was den Walk steuert -- die Sackgassen-Strategie steckt
         bereits im Namen."""
-        return (f"{self.name}|seeds{self.n_seeds}|burn{self.burn_in}"
-                f"|restart{self.restart_prob:g}|loops{int(self.allow_self_loops)}")
+        return (f"{self.name}|seeds{self.n_seeds}|walks{self.n_walks}"
+                f"|burn{self.burn_in}|restart{self.restart_prob:g}"
+                f"|loops{int(self.allow_self_loops)}")
 
     def _step(self, u, nbrs, rng):
         """Zufaelliger Nachbar != u, oder None wenn es keinen gibt.
@@ -85,27 +97,41 @@ class RandomWalkSampler(Sampler):
 
     def sample(self, oracle) -> list[Sample]:
         trace: list[Sample] = []
+        current: list[Sample] = []
         try:
-            seeds = oracle.seed_nodes(self.n_seeds)
-            start = seeds[0]
-            u = start
-            path = [u]
-            step = 0
-            while True:
-                nbrs = oracle.neighbors(u)
-                if step >= self.burn_in:
-                    trace.append(Sample(u, len(nbrs), step))
-                    oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
-                step += 1
+            for walk in range(self.n_walks):
+                # Der letzte Walk laeuft bis zum Budgetende. Damit ist der
+                # Normalfall n_walks=1 exakt der alte Code: `while True`.
+                limit = (math.inf if walk == self.n_walks - 1
+                         else oracle.budget * (walk + 1) / self.n_walks)
+                current = []
+                seeds = oracle.seed_nodes(self.n_seeds)
+                start = seeds[0]
+                u = start
+                path = [u]
+                step = 0
+                while oracle.queries < limit:
+                    nbrs = oracle.neighbors(u)
+                    if step >= self.burn_in:
+                        current.append(Sample(u, len(nbrs), step, walk))
+                        oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
+                    step += 1
 
-                nxt = self._step(u, nbrs, oracle.rng) if len(nbrs) else None
-                if nxt is None:
-                    u = self.dead_end.next_node(oracle, path, trace, start)
-                elif self.restart_prob and oracle.rng.random() < self.restart_prob:
-                    path.clear()
-                    u = start
-                else:
-                    u = nxt
-                path.append(u)
+                    nxt = self._step(u, nbrs, oracle.rng) if len(nbrs) else None
+                    if nxt is None:
+                        # bewusst nur die Besuchsfolge *dieses* Walks: ein
+                        # History-Sprung ueber Walk-Grenzen hinweg machte die
+                        # Faenge voneinander abhaengig.
+                        u = self.dead_end.next_node(oracle, path, current, start)
+                    elif self.restart_prob and oracle.rng.random() < self.restart_prob:
+                        path.clear()
+                        u = start
+                    else:
+                        u = nxt
+                    path.append(u)
+                trace.extend(current)
+                current = []
         except BudgetExceeded:
-            return trace
+            pass
+        trace.extend(current)   # der abgebrochene Walk zaehlt mit
+        return trace
