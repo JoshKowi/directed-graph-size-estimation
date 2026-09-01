@@ -87,7 +87,7 @@ Fehler des Schaetzers, sondern die Antwort auf eine andere Frage.
 ### 4. Literale gehoeren nicht in den Graphen
 
 Die GPT-Wissensgraphen enthalten neben Entitaeten auch Literale ("person",
-"1890-03-11", "American") und unbrauchbare Fragmente ("<pre>",
+"1890-03-11", "American") und unbrauchbare Fragmente ("< pre >",
 "about 708,127 (2020) "). Die nodes-Tabellen unter `nodes/` typisieren jeden
 Namen als `instance`, `literal` oder `undefined`.
 
@@ -104,16 +104,17 @@ python build_instances_only.py --adjacency adjacency_list_uni \
 zuverlaessig -- entschieden wurde es ueber die Knotenmengen. Anteil der
 Knoten eines Graphen, die in der jeweiligen Tabelle vorkommen:
 
-| | `gpt4_nodes` (18 185 374) | `gpt1_nodes` (15 836 295) |
+| | `gpt4_nodes` (18 185 374) | `gpt4o_nodes` (15 836 295) |
 |---|---|---|
 | `adjacency_list_uni`, \|V\| = 18 144 908 | **100.00 %** | 14.93 % |
 | `gpt4o_adj_from_dataset`, \|V\| = 15 723 674 | 16.52 % | **95.26 %** |
 
 Eindeutiger geht es nicht: `gpt4_nodes` deckt `adjacency_list_uni` bis auf
 485 Namen vollstaendig ab. Dazu passen die Zeitstempel (`created_at`):
-`gpt1_nodes` beginnt am 2024-11-20, `gpt4_nodes` am 2025-06-06 -- und beide
-starten bei derselben Saat-Entitaet `Vannevar Bush` mit `bfs_level = 0`.
-`gpt1` ist also die aeltere Erhebung (gpt-4o), `gpt4` die neuere (gpt-4).
+`gpt4o_nodes` beginnt am 2024-11-20, `gpt4_nodes` am 2025-06-06 -- und beide
+starten bei derselben Saat-Entitaet `Vannevar Bush` mit `bfs_level = 0`. Die
+aeltere Erhebung gehoert also zu gpt-4o, die neuere zu gpt-4; die Datei hiess
+urspruenglich `gpt1_nodes` und ist nach diesem Abgleich umbenannt worden.
 
 Was der Filter bewirkt (`gpt-4` -> `gpt-4-io`):
 
@@ -131,7 +132,61 @@ gehoert nicht mehr einem Literal (`person`), sondern einer echten Entitaet.
 Fuer Random Walks auf der gerichteten Sicht ist das ein anderer Graph.
 
 Die Altbestaende bleiben zum Vergleich liegen: `gpt-4` und `gpt-4o` enthalten
-Literale, `gpt-4-io` und `gpt-4o-io` nicht.
+Literale, `gpt-4-io` und `gpt-4o-io` nicht. Gegen die Typtabellen
+nachgeprueft sind beide zu **100.000 %** Instanzen -- Schluessel und nur als
+Objekt vorkommende Knoten getrennt geprueft, kein `literal`, kein
+`undefined`, kein Name, der in der Typtabelle fehlt. Das ist zugleich die
+schaerfste Bestaetigung der Zuordnung oben: mit der falschen Tabelle kaeme
+nie eine glatte 100 % heraus.
+
+Wichtige Folge fuer die Auslegung der Ergebnisse: die Knoten ohne ausgehende
+Kanten sind in diesen Dateien **keine Literale**, sondern Instanzen, die beim
+Aufbau des Wissensgraphen nie expandiert wurden -- der offene Rand des BFS.
+
+| | expandierte Instanzen | \|V\| | ohne ausgehende Kanten |
+|---|---|---|---|
+| gpt-4-io | 6 050 977 von 6 505 583 (93 %) | 6 492 586 | 9.7 % |
+| gpt-4o-io | 2 657 109 von 5 693 001 (47 %) | 5 693 001 | 53.3 % |
+
+Der Unterschied zwischen beiden Graphen ist also nicht die Filterung, sondern
+wie weit der Crawl gekommen ist. `wis-katzir__indep` schaetzt auf gpt-4o-io
+deshalb 0.4635 x |V|: es misst die Menge der *expandierten* Instanzen.
+
+### 5. Feste Einstiegsknoten statt gleichverteiltem Start
+
+Ein Crawler kann nicht gleichverteilt aus V ziehen -- dafuer muesste er V
+schon kennen, also genau das, was geschaetzt werden soll. Er startet bei ein
+paar bekannten Entitaeten.
+
+*Entscheidung: je Graph eine feste, einmal festgelegte Liste* in
+`config.SEED_NODES`. Welcher der Knoten einen Lauf startet, entscheidet der
+Zufall des Laufs -- sonst beginnen alle Wiederholungen an derselben Stelle
+und die Streuung ueber die Laeufe waere kuenstlich klein. Benutzt wird das von
+`CrawlOracle.seed_nodes()`, also von allen real umsetzbaren Verfahren; die
+Vergleichsverfahren mit globalem Zugriff sind nicht betroffen.
+
+Fuer Slashdot sind es fuenf mit `Random(42)` aus den 70 898 Knoten mit
+ausgehenden Kanten gezogene Knoten (3285, 14758, 30177, 33136, 37446). Ihre
+kleinen Grade (1 bis 6) sind kein Versehen, sondern das, was gleichverteiltes
+Ziehen in einem schwanzlastigen Graphen liefert.
+
+Fuer die GPT-Basen fuenf Entitaeten verschiedener Art, jede in **beiden**
+Basen als Schluessel vorhanden (Ausgangsgrad gpt-4-io / gpt-4o-io):
+
+| Startknoten | gpt-4-io | gpt-4o-io | |
+|---|---|---|---|
+| `Vannevar Bush` | 34 | 26 | die Saat-Entitaet beider Erhebungen |
+| `Isaac Newton` | 38 | 79 | Wissenschaftler |
+| `United States of America` | 81 | 92 | Land |
+| `Kurashiki` | 33 | 37 | mittelgrosse japanische Stadt |
+| `Katsushika Hokusai` | 25 | 80 | Kuenstler |
+
+Zwei Auswahlen sind bewusst so getroffen: Von den USA-Schreibweisen ist
+`United States of America` die einzige mit aehnlichem Grad in beiden Basen
+(`United States` 62/913, `USA` 81/781) -- mit den anderen startete der Crawl
+in beiden Graphen unter verschiedenen Bedingungen. Und als Kuenstler
+ausdruecklich nicht `Yoshitomo Nara` (13/**148 884**): der Ausreisser aus
+Punkt 4 wuerde als fester Startknoten jeden Lauf auf gpt-4o-io dominieren.
 
 ### Noch offen
 
@@ -143,9 +198,6 @@ Literale, `gpt-4-io` und `gpt-4o-io` nicht.
   Kanten. Ob eine reale Schnittstelle auch eingehende liefert, entscheidet,
   ob die `undirected`-Sicht umsetzbar ist oder blosse Vergleichsgroesse
   bleibt.
-- **Einstiegspunkte.** Gestartet wird gleichverteilt ueber V. Realistischer
-  waeren wenige bekannte Startknoten -- bei gerichteten Graphen mit Senken
-  entscheidet der Start messbar mit (siehe `--seed`).
 
 ## Struktur
 

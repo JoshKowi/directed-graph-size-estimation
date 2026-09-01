@@ -150,6 +150,10 @@ def run_graph(
         t0 = time.perf_counter()
         view = build_view(graph, view_name)
         true_size = view.n_nodes
+        # Feste Einstiegsknoten *vor* dem Fork aufloesen: der Durchlauf durch
+        # names ist bei 18 Mio. Knoten sonst in jedem Kindprozess erneut faellig
+        # (siehe graphs.graph.seed_ids).
+        view.seed_ids()
         log(f"[{graph.name}/{view_name}] View gebaut in {time.perf_counter()-t0:.1f}s "
             f"-- |V|={_n(true_size)}, Kanten={_n(view.n_edges)}")
 

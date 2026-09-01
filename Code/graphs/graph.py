@@ -38,6 +38,8 @@ from pathlib import Path
 
 import numpy as np
 
+import config
+
 ID_DTYPE = np.int32          # reicht bis 2,1 Mrd Knoten
 PTR_DTYPE = np.int64
 
@@ -51,6 +53,7 @@ class Graph:
         self.names = names          # ID -> Original-Schluessel
         self.name = name
         self._index: dict | None = None   # lazy, s. id_of()
+        self._seed_ids: list | None = None  # lazy, s. seed_ids()
 
     # -- Groessen ---------------------------------------------------------
     @property
@@ -82,6 +85,32 @@ class Graph:
         if self._index is None:
             self._index = {k: i for i, k in enumerate(self.names)}
         return self._index[name]
+
+    def seed_ids(self) -> list | None:
+        """IDs der festen Einstiegsknoten, oder None wenn keine hinterlegt sind.
+
+        Aufgeloest wird mit einem einzigen Durchlauf durch `names` statt ueber
+        id_of(): der dortige Index waere fuer fuenf Namen ein dict mit bis zu
+        18 Mio. Eintraegen -- ein paar GB, und im Experiment je Kindprozess
+        erneut. Das Ergebnis wird an der Instanz gecacht; der Runner waermt es
+        vor dem Fork, damit alle Prozesse dieselbe Liste erben.
+        """
+        if self._seed_ids is None:
+            wanted = config.SEED_NODES.get(self.name)
+            if wanted is None:
+                return None
+            found = {}
+            for i, nm in enumerate(self.names):
+                if nm in wanted and nm not in found:
+                    found[nm] = i
+            missing = [w for w in wanted if w not in found]
+            if missing:
+                raise ValueError(
+                    f"Feste Einstiegsknoten fehlen in {self.name!r}: {missing}. "
+                    "config.SEED_NODES anpassen."
+                )
+            self._seed_ids = [found[w] for w in wanted]
+        return self._seed_ids
 
     # -- Ziehen -----------------------------------------------------------
     def random_node(self, rng: random.Random) -> int:

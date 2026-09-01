@@ -12,4 +12,4 @@ nach nodes/gpt4_nodes.pkl:
         --nodes gpt4_nodes --out gpt4_io
 Zuordnung der nodes-Dateien ueber die Knotenmengen (siehe README,
 "Entwurfsentscheidungen"): gpt4_nodes deckt 100.00 % von adjacency_list_uni ab,
-gpt1_nodes 95.26 % von gpt4o_adj_from_dataset.
+gpt4o_nodes (frueher gpt1_nodes) 95.26 % von gpt4o_adj_from_dataset.

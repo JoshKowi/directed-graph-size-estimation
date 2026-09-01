@@ -63,6 +63,45 @@ def resolve_graph(name: str) -> str:
     return GRAPH_ALIASES.get(name.strip().lower(), name)
 
 
+# --- Feste Einstiegsknoten ---------------------------------------------
+# Ein realer Crawler startet nicht bei einem gleichverteilt gezogenen Knoten
+# (dafuer muesste er V schon kennen), sondern bei ein paar bekannten. Diese
+# Listen sind dieses "bekannte" Wissen -- einmal festgelegt, nicht je Lauf neu
+# gezogen, damit alle Laeufe und alle Graphen von derselben Stelle starten.
+#
+# Slashdot: fuenf mit random.Random(42) aus den 70 898 Knoten mit ausgehenden
+# Kanten gezogene Knoten. Ihre kleinen Grade (1 bis 6) sind kein Versehen,
+# sondern das, was gleichverteiltes Ziehen in einem schwanzlastigen Graphen
+# liefert.
+#
+# GPT-Graphen: fuenf Entitaeten verschiedener Art, jede in *beiden* Basen als
+# Schluessel vorhanden (Ausgangsgrad gpt4_io / gpt4o_io):
+#   Vannevar Bush             34 /  26   die Saat-Entitaet beider Erhebungen
+#   Isaac Newton              38 /  79   Wissenschaftler
+#   United States of America  81 /  92   Land; von den Varianten die einzige
+#                                        mit aehnlichem Grad in beiden Basen
+#                                        ("United States" 62/913, "USA" 81/781)
+#   Kurashiki                 33 /  37   mittelgrosse japanische Stadt
+#   Katsushika Hokusai        25 /  80   Kuenstler; bewusst nicht Yoshitomo
+#                                        Nara (13/148884) -- der ist in
+#                                        gpt4o_io ein Ausreisser, siehe README
+GPT_SEED_NODES = [
+    "Vannevar Bush",
+    "Isaac Newton",
+    "United States of America",
+    "Kurashiki",
+    "Katsushika Hokusai",
+]
+
+SEED_NODES = {
+    "Slashdot0811": [3285, 14758, 30177, 33136, 37446],
+    "adjacency_list_uni": GPT_SEED_NODES,
+    "gpt4_io": GPT_SEED_NODES,
+    "gpt4o_adj_from_dataset": GPT_SEED_NODES,
+    "gpt4o_io": GPT_SEED_NODES,
+}
+
+
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
