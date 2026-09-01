@@ -181,6 +181,30 @@ Basen als Schluessel vorhanden (Ausgangsgrad gpt-4-io / gpt-4o-io):
 | `Kurashiki` | 33 | 37 | mittelgrosse japanische Stadt |
 | `Katsushika Hokusai` | 25 | 80 | Kuenstler |
 
+Welcher Einstieg benutzt wird, steuert `--start-node`:
+
+```bash
+python run_experiment.py --graphs gpt-4-io                        # Vannevar Bush
+python run_experiment.py --graphs gpt-4-io --start-node Kurashiki
+python run_experiment.py --graphs gpt-4-io --start-node all       # alle fuenf
+```
+
+Default ist der erste Eintrag der Liste. `all` rechnet alle fuenf
+nacheinander, jeden in **eigene Dateien** -- verschiedene Einstiege sind
+verschiedene Bedingungen und gehoeren nicht in dieselbe Spanne, genau wie bei
+`--seed`:
+
+| Wo | Wie |
+|---|---|
+| Ergebnis-CSV | Spalte `start_node` in jeder Zeile |
+| Dateiname | `gpt4_io__start-kurashiki__estimates.csv` |
+| Grafik | oben rechts, `seed 42  \|  start: Kurashiki` |
+
+Der Default-Einstieg bekommt wie der Default-Seed **keinen** Namenszusatz.
+Innerhalb eines Durchlaufs starten alle Wiederholungen am selben Knoten; die
+Streuung im Bild ist dann reines RNG-Rauschen des Walks, nicht mehr die
+Mischung aus Einstieg und Walk.
+
 Zwei Auswahlen sind bewusst so getroffen: Von den USA-Schreibweisen ist
 `United States of America` die einzige mit aehnlichem Grad in beiden Basen
 (`United States` 62/913, `USA` 81/781) -- mit den anderen startete der Crawl

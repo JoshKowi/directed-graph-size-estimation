@@ -83,16 +83,23 @@ def main() -> None:
     p.add_argument("--graphs", nargs="+", required=True)
     p.add_argument("--seed", type=int, default=None,
                    help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
+    p.add_argument("--start-node", default=None,
+                   help="nur diesen Einstiegsknoten plotten (Default: jeden vorhandenen)")
     args = p.parse_args()
 
     for graph in (config.resolve_graph(g) for g in args.graphs):
-        df = results_io.load_results(graph, seed=args.seed)
-        for seed in results_io.seeds_available(df) or [config.DEFAULT_SEED]:
-            summary = results_io.summarize(df[df["seed"] == seed])
-            tag = results_io.seed_tag(seed)
+        df = results_io.load_results(graph, seed=args.seed, start=args.start_node)
+        # Seed *und* Einstiegsknoten trennen Bedingungen -- je Paar ein Bild.
+        for seed, start in (results_io.conditions_available(df)
+                            or [(config.DEFAULT_SEED, None)]):
+            part = df[(df["seed"] == seed) & (df["start_node"] == start)]
+            summary = results_io.summarize(part)
+            tag = results_io.seed_tag(seed) + results_io.start_tag(graph, start)
             # Genestete Budgets gehoeren ins Bild: die Punkte einer Zeile sind
             # dann nicht unabhaengig voneinander (siehe experiment/runner.py).
             note = f"seed {seed}"
+            if start is not None:
+                note += f"  |  start: {start}"
             if summary["nested"].any():
                 note += "  |  nested budgets"
             for slug, ests, views, title in FIGURES:
@@ -104,7 +111,7 @@ def main() -> None:
                                        & summary["estimator"].isin(ests),
                                        "estimator"].unique())
                 if len(have) < 2:
-                    print(f"  -- {slug} uebersprungen (Seed {seed}: nur "
+                    print(f"  -- {slug} uebersprungen (Seed {seed}{tag and ', ' + str(start)}: nur "
                           f"{sorted(have)} in {views} vorhanden)")
                     continue
                 path = config.PLOTS_DIR / f"{graph}__{tag}{slug}.png"

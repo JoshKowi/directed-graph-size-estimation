@@ -1,16 +1,24 @@
 """Speichern und Laden der Ergebnisse (CSV je Graph unter data/results).
 
-Ein Lauf ist durch (Graph, Seed) bestimmt. Der Seed steht als Spalte in der
-CSV *und* im Dateinamen, damit zwei Laeufe desselben Graphen sich nicht
-gegenseitig ueberschreiben: `<graph>__estimates.csv` fuer den Default-Seed,
-`<graph>__seed7__estimates.csv` fuer jeden anderen. Der Default bleibt ohne
-Zusatz, damit aeltere Ergebnisse weiter gefunden werden.
+Ein Lauf ist durch (Graph, Seed, Einstiegsknoten) bestimmt. Alle drei stehen
+als Spalte in der CSV *und* im Dateinamen, damit sich zwei Laeufe desselben
+Graphen nicht gegenseitig ueberschreiben:
+
+    <graph>__estimates.csv                       Default-Seed, Default-Einstieg
+    <graph>__seed7__estimates.csv                anderer Seed
+    <graph>__start-isaac-newton__estimates.csv   anderer Einstiegsknoten
+    <graph>__seed7__start-isaac-newton__estimates.csv
+
+Die Defaults bleiben ohne Zusatz, damit aeltere Ergebnisse weiter gefunden
+werden.
 
 Schnittstelle:
     seed_tag(seed) -> str
-    parse_stem(stem) -> (graph, seed, kind)
-    save_results(df, graph_name, kind="estimates", seed=None) -> Path
-    load_results(graph_name=None, kind="estimates", seed=None) -> pd.DataFrame
+    start_tag(graph, start_node) -> str
+    parse_stem(stem) -> (graph, seed, start, kind)
+    save_results(df, graph_name, kind="estimates", seed=None, start=None) -> Path
+    load_results(graph_name=None, kind="estimates", seed=None, start=None)
+        -> pd.DataFrame
     summarize(df) -> pd.DataFrame     (min/median/max je View x Estimator x Budget,
                                        plus erlaubtes/genutztes Budget)
     compare_views(df, reference="directed") -> pd.DataFrame
@@ -36,36 +44,60 @@ def seed_tag(seed: int | None) -> str:
     return "" if seed is None or int(seed) == config.DEFAULT_SEED else f"seed{int(seed)}__"
 
 
-def parse_stem(stem: str) -> tuple[str, int, str]:
+def start_tag(graph: str, start_node) -> str:
+    """Namensbestandteil fuer den Einstiegsknoten -- leer beim Default.
+
+    Default ist der erste Eintrag in config.SEED_NODES; Graphen ohne
+    Einstiegsknoten (dort wird gleichverteilt gezogen) bekommen nie einen Zusatz.
+    """
+    if start_node is None:
+        return ""
+    known = config.seed_nodes(graph)
+    if not known or str(start_node) == str(known[0]):
+        return ""
+    return f"start-{config.start_slug(start_node)}__"
+
+
+def parse_stem(stem: str) -> tuple[str, int, str | None, str]:
     """Dateinamen zerlegen -- gilt fuer CSVs *und* Bilder.
 
-        gpt4o_io__estimates            -> ("gpt4o_io", DEFAULT_SEED, "estimates")
-        gpt4o_io__seed7__estimates     -> ("gpt4o_io", 7, "estimates")
-        gpt4o_io__seed7__wis_rw__views -> ("gpt4o_io", 7, "wis_rw__views")
+        gpt4o_io__estimates          -> ("gpt4o_io", DEFAULT_SEED, None, "estimates")
+        gpt4o_io__seed7__estimates   -> ("gpt4o_io", 7, None, "estimates")
+        gpt4o_io__start-kurashiki__estimates
+                                     -> ("gpt4o_io", DEFAULT_SEED, "kurashiki",
+                                         "estimates")
+        gpt4o_io__seed7__wis_rw__views -> ("gpt4o_io", 7, None, "wis_rw__views")
 
     Der Rest bleibt am Stueck: Plot-Slugs duerfen selbst `__` enthalten.
+    Zurueck kommt der *Slug* des Einstiegsknotens (oder None fuer den Default),
+    nicht der Knotenname -- aus dem Dateinamen ist er nicht wiederherstellbar.
     """
     graph, _, rest = stem.partition("__")
+    seed, start = config.DEFAULT_SEED, None
     m = re.match(r"seed(-?\d+)__(.*)", rest)
     if m:
-        return graph, int(m.group(1)), m.group(2)
-    return graph, config.DEFAULT_SEED, rest
+        seed, rest = int(m.group(1)), m.group(2)
+    m = re.match(r"start-([a-z0-9-]+)__(.*)", rest)
+    if m:
+        start, rest = m.group(1), m.group(2)
+    return graph, seed, start, rest
 
 
-def _path(graph_name: str, kind: str, seed: int | None = None) -> Path:
-    return config.RESULTS_DIR / f"{graph_name}__{seed_tag(seed)}{kind}.csv"
+def _path(graph_name: str, kind: str, seed: int | None = None, start=None) -> Path:
+    return (config.RESULTS_DIR /
+            f"{graph_name}__{seed_tag(seed)}{start_tag(graph_name, start)}{kind}.csv")
 
 
 def save_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
-                 seed: int | None = None) -> Path:
+                 seed: int | None = None, start=None) -> Path:
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    path = _path(graph_name, kind, seed)
+    path = _path(graph_name, kind, seed, start)
     df.to_csv(path, index=False)
     return path
 
 
 def load_results(graph_name: str | None = None, kind: str = "estimates",
-                 seed: int | None = None) -> pd.DataFrame:
+                 seed: int | None = None, start=None) -> pd.DataFrame:
     """Ergebnisse laden; `seed=None` laedt alle vorhandenen Seeds.
 
     Mehrere Seeds landen in *einem* Frame -- unterschieden werden sie ueber die
@@ -74,17 +106,26 @@ def load_results(graph_name: str | None = None, kind: str = "estimates",
     Zufallsstroeme, was fuer die Streuungsangabe falsch waere.
     """
     frames = []
+    want_start = None if start is None else config.start_slug(start)
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
-        g, s, k = parse_stem(path.stem)
+        g, s, st, k = parse_stem(path.stem)
         if k != kind or (graph_name is not None and g != graph_name):
             continue
         if seed is not None and s != int(seed):
             continue
+        if want_start is not None:
+            known = config.seed_nodes(g)
+            default = config.start_slug(known[0]) if known else None
+            if (st or default) != want_start:
+                continue
         df = pd.read_csv(path)
         if "seed" not in df.columns:      # CSV aus einer Version vor --seed
             df["seed"] = s
         if "nested" not in df.columns:    # ... bzw. vor --checkpoint-budgets
             df["nested"] = False
+        if "start_node" not in df.columns:   # ... bzw. vor --start-node
+            known = config.seed_nodes(g)
+            df["start_node"] = str(known[0]) if known else "<zufaellig>"
         frames.append(df)
     if not frames:
         if graph_name is not None:
@@ -102,18 +143,34 @@ def seeds_available(df: pd.DataFrame) -> list[int]:
     return sorted(int(s) for s in df["seed"].dropna().unique())
 
 
+def conditions_available(df: pd.DataFrame) -> list[tuple]:
+    """Die (Seed, Einstiegsknoten)-Paare eines Frames.
+
+    Beides trennt Laeufe voneinander und darf beim Plotten nicht vermischt
+    werden -- die Plot-Skripte zeichnen je Paar ein eigenes Bild.
+    """
+    if df.empty:
+        return []
+    if "start_node" not in df.columns:
+        return [(s, None) for s in seeds_available(df)]
+    pairs = df[["seed", "start_node"]].drop_duplicates()
+    return sorted((int(s), n) for s, n in pairs.itertuples(index=False))
+
+
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
     """Range der Schaetzungen je View, Estimator und Budget."""
     if "seed" not in df.columns:          # Frame aus einer Version vor --seed
         df = df.assign(seed=config.DEFAULT_SEED)
     if "nested" not in df.columns:
         df = df.assign(nested=False)
+    if "start_node" not in df.columns:
+        df = df.assign(start_node="<zufaellig>")
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
         # in einen Punkt zusammenfallen.
-        df.groupby(["graph", "view", "category", "estimator", "budget_rel", "seed"],
-                   dropna=False)
+        df.groupby(["graph", "view", "category", "estimator", "budget_rel", "seed",
+                    "start_node"], dropna=False)
         .agg(
             n_runs=("estimate", "size"),
             est_min=("estimate", "min"),

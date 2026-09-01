@@ -141,7 +141,7 @@ def _results_readme() -> str:
              "reproduzierbar) -- diese Datei haelt fest, woher sie stammen.",
              "", "## Dateien", ""]
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
-        graph, seed, kind = results_io.parse_stem(path.stem)
+        graph, seed, start, kind = results_io.parse_stem(path.stem)
         label = config.graph_label(graph)
         parts.append(f"### `{path.name}`")
         parts.append("")
@@ -172,6 +172,9 @@ def _results_readme() -> str:
                 f"- Seed: {seed}"
                 + ("" if seed == config.DEFAULT_SEED else "  (abweichend vom Default "
                    f"{config.DEFAULT_SEED} -- eigener Durchlauf)"),
+                "- Einstieg: " + (", ".join(sorted(map(str, df["start_node"].dropna()
+                                                       .unique())))
+                                  if "start_node" in df else "gleichverteilt"),
             ]
             if "stopped_by" in df:
                 counts = df["stopped_by"].value_counts().to_dict()
@@ -192,6 +195,9 @@ def _results_readme() -> str:
             if seed != config.DEFAULT_SEED:
                 cmd[-1] += " \\"
                 cmd.append(f"    --seed {seed}")
+            if start:
+                cmd[-1] += " \\"
+                cmd.append(f"    --start-node '{start}'")
             parts += ["", "Erzeugt mit:", "", "```bash", *cmd, "```", ""]
         elif kind == "view_comparison":
             parts += [f"Gepaarter Vergleich der Kantensichten fuer **{label}** "
@@ -211,6 +217,7 @@ def _results_readme() -> str:
         "| `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |",
         "| `stopped_by` | warum der Lauf endete -- normal `budget` |",
         "| `seed` | Zufallsstrom des Laufs (siehe Dateiname) |",
+        "| `start_node` | Einstiegsknoten des Crawls (`config.SEED_NODES`) |",
         "| `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |",
         "| `extra_*` | verfahrensspezifisch, z.B. `extra_n_samples` |",
         "",
@@ -246,7 +253,7 @@ def _plots_readme() -> str:
         "",
     ]
     for path in sorted(config.PLOTS_DIR.glob("*.png")):
-        graph, seed, slug = results_io.parse_stem(path.stem)
+        graph, seed, start, slug = results_io.parse_stem(path.stem)
         label = config.graph_label(graph)
         parts.append(f"### `{path.name}`")
         parts.append("")
@@ -257,6 +264,7 @@ def _plots_readme() -> str:
                 "",
                 f"- Graph: **{label}** (`{graph}`)",
                 f"- Seed: {seed}",
+                f"- Einstieg: {start or 'Default (config.SEED_NODES)'}",
                 f"- Views: {', '.join(views)}",
                 f"- Estimators: {', '.join(ests)}",
                 "",

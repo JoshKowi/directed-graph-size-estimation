@@ -32,9 +32,11 @@ def main() -> None:
                    help="Estimators, deren Name einen dieser Teilstrings enthaelt")
     p.add_argument("--seed", type=int, default=None,
                    help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
+    p.add_argument("--start-node", default=None,
+                   help="nur diesen Einstiegsknoten plotten (Default: jeden vorhandenen)")
     args = p.parse_args()
 
-    df = results_io.load_results(seed=args.seed)
+    df = results_io.load_results(seed=args.seed, start=args.start_node)
     if df.empty:
         print("Keine Ergebnisse gefunden -- zuerst run_experiment.py ausfuehren.")
         return
@@ -47,23 +49,28 @@ def main() -> None:
         print("Auswahl trifft auf keine Zeile zu.")
         return
 
-    for seed in results_io.seeds_available(df):
-        part = df[df["seed"] == seed]
+    # Seed *und* Einstiegsknoten trennen Bedingungen -- je Paar ein Bild.
+    for seed, start in results_io.conditions_available(df):
+        part = df[(df["seed"] == seed) & (df["start_node"] == start)]
         summary = results_io.summarize(part)
         comparison = results_io.compare_views(part)
-        tag = results_io.seed_tag(seed)
         note = f"seed {seed}"
+        if start is not None:
+            note += f"  |  start: {start}"
         if summary["nested"].any():      # Punkte je Lauf dann korreliert
             note += "  |  nested budgets"
         for name in ([config.resolve_graph(g) for g in args.graphs]
                      if args.graphs else sorted(summary["graph"].unique())):
+            rows = summary[summary["graph"] == name]
+            if rows.empty:      # diese Bedingung gibt es fuer den Graphen nicht
+                continue
+            tag = results_io.seed_tag(seed) + results_io.start_tag(name, start)
             path = config.PLOTS_DIR / f"{name}__{tag}ranges.png"
-            plot_ranges(summary[summary["graph"] == name], graph_name=name,
-                        path=path, note=note)
+            plot_ranges(rows, graph_name=name, path=path, note=note)
             print("  ->", path)
             print("  ->", results_io.save_results(
                 comparison[comparison["graph"] == name], name,
-                kind="view_comparison", seed=seed))
+                kind="view_comparison", seed=seed, start=start))
 
 
 if __name__ == "__main__":

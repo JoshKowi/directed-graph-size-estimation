@@ -4,6 +4,7 @@ Schnittstelle:
     ROOT, ADJACENCIES_DIR, RESULTS_DIR, PLOTS_DIR
     DEFAULT_BUDGETS, DEFAULT_N_RUNS, DEFAULT_SEED, DEFAULT_BUDGET_METRIC, DEFAULT_VIEWS
     GRAPH_LABELS, graph_label(name), GRAPH_ALIASES, resolve_graph(name)
+    SEED_NODES, seed_nodes(graph), start_slug(node)
 """
 
 from pathlib import Path
@@ -100,6 +101,22 @@ SEED_NODES = {
     "gpt4o_adj_from_dataset": GPT_SEED_NODES,
     "gpt4o_io": GPT_SEED_NODES,
 }
+
+
+def seed_nodes(graph: str) -> list:
+    """Einstiegsknoten eines Graphen; leer, wenn keine hinterlegt sind.
+
+    Der *erste* Eintrag ist der Default-Einstieg von run_experiment.py -- bei
+    den GPT-Basen also "Vannevar Bush", die Saat-Entitaet beider Erhebungen.
+    """
+    return list(SEED_NODES.get(resolve_graph(graph), ()))
+
+
+def start_slug(node) -> str:
+    """Dateinamens-Baustein fuer einen Einstiegsknoten: "Isaac Newton" ->
+    "isaac-newton". Nur fuer Namen, die Ergebnisse voneinander trennen."""
+    keep = [c.lower() if c.isalnum() else "-" for c in str(node)]
+    return "-".join("".join(keep).split("-")).strip("-") or "start"
 
 
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.

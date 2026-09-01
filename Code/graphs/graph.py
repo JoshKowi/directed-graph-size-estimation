@@ -53,7 +53,8 @@ class Graph:
         self.names = names          # ID -> Original-Schluessel
         self.name = name
         self._index: dict | None = None   # lazy, s. id_of()
-        self._seed_ids: list | None = None  # lazy, s. seed_ids()
+        self._seed_ids_all: list | None = None  # lazy, s. seed_ids()
+        self._seed_ids: list | None = None      # aktive Auswahl, s. restrict_seeds()
 
     # -- Groessen ---------------------------------------------------------
     @property
@@ -95,7 +96,9 @@ class Graph:
         erneut. Das Ergebnis wird an der Instanz gecacht; der Runner waermt es
         vor dem Fork, damit alle Prozesse dieselbe Liste erben.
         """
-        if self._seed_ids is None:
+        if self._seed_ids is not None:
+            return self._seed_ids
+        if self._seed_ids_all is None:
             wanted = config.SEED_NODES.get(self.name)
             if wanted is None:
                 return None
@@ -109,8 +112,33 @@ class Graph:
                     f"Feste Einstiegsknoten fehlen in {self.name!r}: {missing}. "
                     "config.SEED_NODES anpassen."
                 )
-            self._seed_ids = [found[w] for w in wanted]
-        return self._seed_ids
+            self._seed_ids_all = [found[w] for w in wanted]
+        return self._seed_ids_all
+
+    def restrict_seeds(self, nodes) -> None:
+        """Die Einstiegsknoten auf `nodes` einschraenken (Namen, nicht IDs).
+
+        Damit laesst sich ein Experiment auf einen einzelnen Einstieg
+        festlegen, ohne dass das Oracle davon wissen muss -- es fragt weiterhin
+        nur seed_ids(). Aufzurufen, bevor der Runner forkt.
+
+        Die volle Liste bleibt in `_seed_ids_all` erhalten, sonst liesse sich
+        die Einschraenkung nur einmal setzen (der zweite Aufruf faende die
+        weggelassenen Knoten nicht mehr).
+        """
+        wanted = list(nodes)
+        known = config.SEED_NODES.get(self.name)
+        if known is None:
+            raise ValueError(f"Fuer {self.name!r} sind keine Einstiegsknoten hinterlegt")
+        unknown = [n for n in wanted if n not in known]
+        if unknown:
+            raise ValueError(
+                f"{unknown} steht nicht in config.SEED_NODES[{self.name!r}] "
+                f"-- moeglich sind {known}"
+            )
+        self._seed_ids = None            # erst die volle Liste aufloesen
+        all_ids = dict(zip(known, self.seed_ids()))
+        self._seed_ids = [all_ids[n] for n in wanted]
 
     # -- Ziehen -----------------------------------------------------------
     def random_node(self, rng: random.Random) -> int:
