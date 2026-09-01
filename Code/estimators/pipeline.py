@@ -11,6 +11,13 @@ ein oder mehrere Sample-Sets, je Set wird gewichtet und geschaetzt, und die
 Einzelschaetzungen werden aggregiert (Default: Median). NaN-Schaetzungen --
 Sets ohne beobachtete Kollision -- werden vorher aussortiert.
 
+Geteilte Walks (`estimate_group`): Thinning, Weighting und Formel kommen alle
+*nach* dem Sampler -- sie sind reine Nachbearbeitung einer Trajektorie und
+aendern nichts am Walk. Estimators mit gleichem `walk_key` (Oracle + Sampler +
+Budget-Metrik) koennen sich deshalb einen einzigen Walk teilen und nur die
+Auswertung variieren. Das spart nicht nur Rechenzeit: der Vergleich zwischen
+den Varianten wird dadurch *gepaart*, enthaelt also kein RNG-Rauschen mehr.
+
 Genestete Budgets (`estimate_nested`): statt je Budget einen eigenen Lauf zu
 rechnen, laeuft *ein* Lauf mit dem groessten Budget und haelt unterwegs fest,
 wo die kleineren geendet haetten. Die Stichprobe wird dort abgeschnitten und
@@ -26,13 +33,19 @@ danach genestet, nicht unabhaengig. Deshalb steht das in der Ergebnis-CSV
 
 Schnittstelle:
     class PipelineEstimator(Estimator)
+        .walk_key -> str
+        .run_walk(graph, budget, rng, checkpoints=()) -> (trace, oracle)
+        .evaluate(trace, cost, visits) -> EstimateResult
         .estimate(graph, budget, rng) -> EstimateResult
         .estimate_nested(graph, budgets, rng) -> dict[int, EstimateResult]
+    estimate_group(estimators, graph, budgets, rng)
+        -> dict[(name, budget), EstimateResult]
 """
 
 from __future__ import annotations
 
 import random
+from functools import partial
 
 import numpy as np
 
@@ -40,6 +53,21 @@ import config
 from estimators.base import EstimateResult, Estimator
 from graphs.graph import Graph
 from sampling.thinning import NoThinning
+
+
+def _oracle_key(oracle_cls) -> str:
+    """Identitaet des Oracles, inklusive gebundener Parameter.
+
+    `short_walk_independent.build` uebergibt das Oracle als
+    `partial(ShortWalkIndependentOracle, steps=5)` -- ohne Aufloesen des
+    partials faenden steps=5 und steps=7 faelschlich in derselben Walk-Gruppe
+    zusammen und teilten sich einen Walk, den nur einer von beiden erzeugt
+    haette.
+    """
+    if isinstance(oracle_cls, partial):
+        args = ",".join(f"{k}={v}" for k, v in sorted(oracle_cls.keywords.items()))
+        return f"{oracle_cls.func.__name__}({args})"
+    return oracle_cls.__name__
 
 
 class PipelineEstimator(Estimator):
@@ -63,10 +91,27 @@ class PipelineEstimator(Estimator):
         self.aggregate = aggregate
         self.budget_metric = budget_metric
 
-    def estimate(self, graph: Graph, budget: int, rng: random.Random) -> EstimateResult:
-        oracle = self.oracle_cls(graph, rng, budget, self.budget_metric)
+    @property
+    def walk_key(self) -> str:
+        """Zwei Estimators mit demselben Schluessel erzeugen dieselbe
+        Trajektorie -- alles danach ist Nachbearbeitung (s. Modul-Docstring)."""
+        return (f"{_oracle_key(self.oracle_cls)}|{self.sampler.key()}"
+                f"|{self.budget_metric}")
+
+    def run_walk(self, graph: Graph, budget: int, rng: random.Random,
+                 checkpoints=()) -> tuple[list, object]:
+        """Nur ziehen, nicht auswerten. Die Trennung macht die geteilten Walks
+        moeglich und haelt estimate/estimate_nested/estimate_group auf
+        derselben Mechanik."""
+        oracle = self.oracle_cls(graph, rng, budget, self.budget_metric,
+                                 checkpoints=tuple(checkpoints))
         trace = self.sampler.sample(oracle)
-        return self._evaluate(trace, oracle.cost(), oracle.visits)
+        oracle.finalize_checkpoints()
+        return trace, oracle
+
+    def estimate(self, graph: Graph, budget: int, rng: random.Random) -> EstimateResult:
+        trace, oracle = self.run_walk(graph, budget, rng)
+        return self.evaluate(trace, oracle.cost(), oracle.visits)
 
     def estimate_nested(self, graph: Graph, budgets, rng: random.Random
                         ) -> dict[int, EstimateResult]:
@@ -78,20 +123,17 @@ class PipelineEstimator(Estimator):
         """
         budgets = sorted({int(b) for b in budgets})
         top = budgets[-1]
-        oracle = self.oracle_cls(graph, rng, top, self.budget_metric,
-                                 checkpoints=budgets[:-1])
-        trace = self.sampler.sample(oracle)
-        oracle.finalize_checkpoints()
+        trace, oracle = self.run_walk(graph, top, rng, checkpoints=budgets[:-1])
 
         out = {}
         for snap in oracle.snapshots:
             snap = dict(snap)
             b, k = snap.pop("budget_abs"), snap.pop("n_samples")
-            out[b] = self._evaluate(trace[:k], snap, None)
-        out[top] = self._evaluate(trace, oracle.cost(), oracle.visits)
+            out[b] = self.evaluate(trace[:k], snap, None)
+        out[top] = self.evaluate(trace, oracle.cost(), oracle.visits)
         return out
 
-    def _evaluate(self, trace, cost: dict, visits) -> EstimateResult:
+    def evaluate(self, trace, cost: dict, visits) -> EstimateResult:
         """Aus einer (ggf. abgeschnittenen) Trajektorie eine Schaetzung machen."""
         subsets = self.thinning.apply(trace)
         values = np.array(
@@ -116,3 +158,42 @@ class PipelineEstimator(Estimator):
                 "subset_spread": float(valid.max() - valid.min()) if valid.size > 1 else 0.0,
             },
         )
+
+
+def estimate_group(estimators, graph: Graph, budgets, rng: random.Random
+                   ) -> dict[tuple[str, int], EstimateResult]:
+    """Ein Walk, alle Varianten -- Ergebnis je (Estimator-Name, Budget).
+
+    Alle uebergebenen Estimators muessen denselben `walk_key` haben; gezogen
+    wird genau einmal, mit dem ersten von ihnen. Danach bekommt jeder dieselbe
+    Trajektorie (bzw. deren Praefix je Budget) durch sein eigenes Thinning,
+    Weighting und seine eigene Formel geschickt.
+
+    Die Besuchszaehler haengen am Walk, nicht an der Variante: sie stehen nur
+    beim ersten Estimator und nur beim groessten Budget, sonst wuerde derselbe
+    Counter mehrfach gezaehlt.
+    """
+    keys = {e.walk_key for e in estimators}
+    if len(keys) != 1:
+        raise ValueError(
+            f"estimate_group braucht denselben Walk fuer alle Estimators, "
+            f"bekam aber {sorted(keys)}"
+        )
+
+    budgets = sorted({int(b) for b in budgets})
+    top = budgets[-1]
+    owner = estimators[0]
+    trace, oracle = owner.run_walk(graph, top, rng, checkpoints=budgets[:-1])
+
+    slices = [(dict(s), s["budget_abs"], s["n_samples"]) for s in oracle.snapshots]
+    slices.append((oracle.cost(), top, len(trace)))
+
+    out = {}
+    for cost, budget, k in slices:
+        cost = {c: v for c, v in cost.items()
+                if c not in ("budget_abs", "n_samples")}
+        part = trace[:k] if k < len(trace) else trace
+        for i, est in enumerate(estimators):
+            visits = oracle.visits if (i == 0 and budget == top) else None
+            out[(est.name, budget)] = est.evaluate(part, cost, visits)
+    return out

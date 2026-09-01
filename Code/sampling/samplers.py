@@ -65,6 +65,12 @@ class RandomWalkSampler(Sampler):
         self.allow_self_loops = allow_self_loops
         self.name = f"random_walk_{self.dead_end.name}"
 
+    def key(self) -> str:
+        """Alles, was den Walk steuert -- die Sackgassen-Strategie steckt
+        bereits im Namen."""
+        return (f"{self.name}|seeds{self.n_seeds}|burn{self.burn_in}"
+                f"|restart{self.restart_prob:g}|loops{int(self.allow_self_loops)}")
+
     def _step(self, u, nbrs, rng):
         """Zufaelliger Nachbar != u, oder None wenn es keinen gibt.
 

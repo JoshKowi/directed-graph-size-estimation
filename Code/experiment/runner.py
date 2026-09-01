@@ -30,6 +30,15 @@ Estimators ohne `estimate_nested` (capture_recapture teilt sein Budget vorab
 auf zwei Walks auf, ein Praefix hat dort eine andere Struktur) laufen auch in
 diesem Modus weiter je Budget einzeln.
 
+`share_walks=True` legt dieselbe Idee auf die Estimator-Achse: Thinning,
+Weighting und Formel sind reine Nachbearbeitung einer Trajektorie, also teilen
+sich alle Estimators mit gleichem `walk_key` (Oracle + Sampler + Metrik) einen
+Walk (siehe estimators.pipeline.estimate_group). Der abgeleitete Strom haengt
+dann am Walk-Schluessel statt am Estimator-Namen -- auch bei Gruppen der
+Groesse eins, damit das Ergebnis eines Estimators nicht davon abhaengt, welche
+anderen zufaellig mit ausgewaehlt wurden. Die Spalte `walk_group` haelt fest,
+welche Zeilen aus demselben Walk stammen und damit gepaart sind.
+
 Parallelisierung: die (Budget, Estimator, Lauf)-Tripel einer View sind
 vollstaendig unabhaengig -- gleicher Graph, nur lesend, eigener Seed. Sie
 laufen ueber einen Pool mit `fork`. Der Graph wird dabei *nicht* kopiert: er
@@ -44,7 +53,7 @@ Zeilen werden am Ende sortiert, damit auch die CSV reproduzierbar ist.
 
 Schnittstelle:
     run_graph(graph, estimators, budgets, n_runs, seed, views, collect_visits,
-              n_jobs, nested_budgets, start_nodes, log)
+              n_jobs, nested_budgets, share_walks, start_nodes, log)
         -> (results_df, visits_df | None)
 """
 
@@ -60,6 +69,7 @@ import pandas as pd
 
 import config
 import estimators as estimator_registry
+from estimators import pipeline
 from estimators.base import Estimator
 from graphs.graph import Graph
 from graphs.views import build_view
@@ -75,11 +85,13 @@ _VIEW: Graph | None = None
 _COLLECT_VISITS = False
 
 
-def _row(est_name, category, seed, start, b, budget, run, res, seconds, nested):
+def _row(est_name, category, seed, start, b, budget, run, res, seconds, nested,
+         walk_group):
     return {
         "estimator": est_name,
         "seed": seed,
         "start_node": start,
+        "walk_group": walk_group,
         "category": category,
         "budget_rel": b,
         "budget_abs": budget,
@@ -98,16 +110,39 @@ def _row(est_name, category, seed, start, b, budget, run, res, seconds, nested):
 
 
 def _estimate_one(task):
-    """Ein (Budget(s), Estimator, Lauf)-Paket. Laeuft im Kindprozess.
+    """Ein (Budget(s) x Variante(n), Lauf)-Paket. Laeuft im Kindprozess.
 
     `budgets` ist entweder ein einzelnes (rel, abs)-Paar oder -- im genesteten
-    Modus -- die ganze Leiter, die aus einem Lauf abgelesen wird.
+    Modus -- die ganze Leiter, die aus einem Lauf abgelesen wird. `names` ist
+    entweder ein einzelner Estimator oder -- mit geteilten Walks -- alle
+    Varianten, die sich denselben Walk teilen.
     """
-    budgets, est_name, category, run, seed, start = task
-    est = estimator_registry.build(est_name)
+    budgets, names, categories, run, seed, start, walk_key = task
+    ests = [estimator_registry.build(n) for n in names]
     nested = len(budgets) > 1
     t0 = time.perf_counter()
 
+    if walk_key is not None:
+        # Der Strom haengt am Walk, nicht am Namen -- sonst haetten dieselben
+        # Varianten verschiedene Trajektorien, und das Ergebnis eines
+        # Estimators haenge davon ab, welche anderen mit ausgewaehlt wurden.
+        rng = random.Random(f"{seed}|{walk_key}|{run}")
+        results = pipeline.estimate_group(ests, _VIEW, [a for _, a in budgets], rng)
+        seconds = time.perf_counter() - t0
+        out = []
+        for i, est in enumerate(ests):
+            for b, budget in budgets:
+                res = results[(est.name, budget)]
+                vis = (res.visits if (_COLLECT_VISITS and res.visits is not None)
+                       else None)
+                # Walk-Zeit einmal auf die erste Zeile der Gruppe, damit die
+                # Summe ueber die CSV die echte Rechenzeit bleibt.
+                own = seconds if (i == 0 and budget == budgets[-1][1]) else 0.0
+                out.append((_row(est.name, categories[i], seed, start, b, budget,
+                                 run, res, own, nested, walk_key), vis))
+        return out
+
+    est_name, category, est = names[0], categories[0], ests[0]
     if nested:
         # Ein Strom je (Estimator, Lauf) -- das Budget kann hier nicht mehr
         # eingehen, es gibt nur noch einen Lauf fuer alle Budgets.
@@ -120,14 +155,15 @@ def _estimate_one(task):
             # Besuchszaehler gibt es nur fuer das groesste Budget (s. pipeline).
             vis = res.visits if (_COLLECT_VISITS and res.visits is not None) else None
             out.append((_row(est_name, category, seed, start, b, budget, run, res,
-                             seconds if budget == budgets[-1][1] else 0.0, True), vis))
+                             seconds if budget == budgets[-1][1] else 0.0, True,
+                             None), vis))
         return out
 
     b, budget = budgets[0]
     rng = random.Random(f"{seed}|{est_name}|{b}|{run}")
     res = est.estimate(_VIEW, budget, rng)
     return [(_row(est_name, category, seed, start, b, budget, run, res,
-                  time.perf_counter() - t0, False),
+                  time.perf_counter() - t0, False, None),
              res.visits if _COLLECT_VISITS else None)]
 
 
@@ -141,6 +177,7 @@ def run_graph(
     collect_visits: bool = True,
     n_jobs: int = config.DEFAULT_N_JOBS,
     nested_budgets: bool = False,
+    share_walks: bool = False,
     start_nodes=None,
     log=print,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
@@ -176,24 +213,46 @@ def run_graph(
                 # vor dem Fork -- die Kindprozesse erben die Einschraenkung
                 view.restrict_seeds([start])
             where = f" start={start}" if len(starts) > 1 else ""
+            # Estimators, die denselben Walk erzeugen wuerden, teilen ihn --
+            # Thinning, Weighting und Formel kommen erst danach. Ohne
+            # --share-walks bleibt jeder Estimator fuer sich.
+            # capture_recapture faellt aus beidem heraus: es teilt sein Budget
+            # vorab auf zwei Walks auf und bringt weder walk_key noch
+            # estimate_nested mit.
+            packs: list[tuple] = []
+            if share_walks:
+                by_key: dict[str, list] = {}
+                for est in estimators:
+                    key = getattr(est, "walk_key", None)
+                    if key is None:
+                        packs.append(([est], None))
+                    else:
+                        by_key.setdefault(key, []).append(est)
+                packs += [(g, k) for k, g in by_key.items()]
+            else:
+                packs = [([est], None) for est in estimators]
+
             tasks = []
-            for est in estimators:
-                # capture_recapture teilt sein Budget vorab auf zwei Walks auf --
-                # ein Praefix hat dort eine andere Struktur, der Estimator bringt
-                # deshalb kein estimate_nested mit und laeuft weiter je Budget.
-                nest = nested_budgets and hasattr(est, "estimate_nested")
-                groups = [ladder] if nest else [[pair] for pair in ladder]
-                tasks += [(g, est.name, str(est.category), run, seed, start)
-                          for g in groups
+            for group, key in packs:
+                nest = nested_budgets and all(hasattr(e, "estimate_nested")
+                                              for e in group)
+                ladders = [ladder] if nest else [[pair] for pair in ladder]
+                names = tuple(e.name for e in group)
+                cats = tuple(str(e.category) for e in group)
+                tasks += [(g, names, cats, run, seed, start, key)
+                          for g in ladders
                           for run in range(n_runs)]
-            if nested_budgets:
-                single = sorted({e.name for e in estimators
-                                 if not hasattr(e, "estimate_nested")})
-                saving = sum(a for _, a in ladder) / ladder[-1][1]
-                log(f"[{graph.name}/{view_name}] genestete Budgets: {len(tasks)} statt "
-                    f"{len(estimators) * len(budgets) * n_runs} Laeufen "
-                    f"(~{saving:.2f}x weniger Arbeit)"
-                    + (f", ausgenommen: {', '.join(single)}" if single else ""))
+
+            plain = len(estimators) * len(budgets) * n_runs
+            if nested_budgets or share_walks:
+                excluded = sorted({e.name for e in estimators
+                                   if not hasattr(e, "estimate_nested")})
+                what = " + ".join(
+                    x for x in (("genestete Budgets" if nested_budgets else ""),
+                                ("geteilte Walks" if share_walks else "")) if x)
+                log(f"[{graph.name}/{view_name}] {what}: {len(tasks)} Walks "
+                    f"statt {plain}"
+                    + (f", ausgenommen: {', '.join(excluded)}" if excluded else ""))
             _VIEW, _COLLECT_VISITS = view, collect_visits
             visits: dict[tuple, Counter] = {}
             done = 0

@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 15:47 |
+| Daten vom | 2026-09-01 15:54 |
 |---|---|
-| Code-Fingerabdruck | `cb43125105ed` |
+| Code-Fingerabdruck | `5d874fad6e4e` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -34,14 +34,15 @@ UIS collision counting with a random walk -- dead-end strategies (directed)
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: directed
 - Estimators: uniform_collision, rw_plain__restart__none, rw_plain__backtrack__none, rw_plain__history__none
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
 
-### `Slashdot0811__ranges.png`
+### `Slashdot0811__thinning-without-weights.png`
 
-Uebersichtsraster fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
 ### `Slashdot0811__walk_diagnosis.png`
 
@@ -53,6 +54,7 @@ WIS (Katzir) -- independent degree-weighted draws (directed)
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: directed
 - Estimators: uniform_collision, wis-katzir__indep
 
@@ -64,6 +66,7 @@ WIS (Katzir) -- independent degree-weighted draws (undirected)
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__indep
 
@@ -75,6 +78,7 @@ WIS with a true random walk -- all dead-end strategies (undirected)
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
 
@@ -86,6 +90,7 @@ WIS with random walk (history) -- directed vs undirected
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: directed, undirected
 - Estimators: uniform_collision, wis-katzir__rw-history
 
@@ -107,13 +112,17 @@ Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 
 
 Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
 
+### `gpt4_io__thinning-without-weights.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
 ### `gpt4o_adj_from_dataset__ranges.png`
 
 Uebersichtsraster fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
 
-### `gpt4o_io__ranges.png`
+### `gpt4o_io__thinning-without-weights.png`
 
-Uebersichtsraster fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/ranges.py`).
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
 ### `gpt4o_io__walk_diagnosis.png`
 
@@ -125,6 +134,7 @@ WIS with a true random walk -- all dead-end strategies (undirected)
 
 - Graph: **GPT-4o knowledge graph (instances only)** (`gpt4o_io`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: undirected
 - Estimators: uniform_collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
 
@@ -136,6 +146,7 @@ WIS with random walk (history) -- directed vs undirected
 
 - Graph: **GPT-4o knowledge graph (instances only)** (`gpt4o_io`)
 - Seed: 42
+- Einstieg: Default (config.SEED_NODES)
 - Views: directed, undirected
 - Estimators: uniform_collision, wis-katzir__rw-history
 

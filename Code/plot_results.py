@@ -59,6 +59,8 @@ def main() -> None:
             note += f"  |  start: {start}"
         if summary["nested"].any():      # Punkte je Lauf dann korreliert
             note += "  |  nested budgets"
+        if summary["shared"].notna().any():
+            note += "  |  shared walks"
         for name in ([config.resolve_graph(g) for g in args.graphs]
                      if args.graphs else sorted(summary["graph"].unique())):
             rows = summary[summary["graph"] == name]

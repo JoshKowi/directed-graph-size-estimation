@@ -102,6 +102,8 @@ def main() -> None:
                 note += f"  |  start: {start}"
             if summary["nested"].any():
                 note += "  |  nested budgets"
+            if summary["shared"].notna().any():
+                note += "  |  shared walks"
             for slug, ests, views, title in FIGURES:
                 # Ein Bild, in dem nur die Referenz uebrig ist, zeigt nichts --
                 # das passiert, wenn ein Lauf nur einen Teil der Estimators oder

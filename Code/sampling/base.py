@@ -4,10 +4,17 @@ Bewusst getrennt vom Oracle (was darf abgefragt werden) und vom Weighting
 (wie wird die Verzerrung korrigiert): Random Walk und unabhaengiges Ziehen
 nutzen dasselbe Oracle, erzeugen aber unterschiedlich verzerrte Stichproben.
 
+`key()` sagt, wann zwei Sampler dieselbe Trajektorie erzeugen wuerden. Der
+Runner gruppiert danach (`--share-walks`): Thinning, Weighting und Formel
+kommen erst *nach* dem Sampler und aendern nichts am Walk, also duerfen sich
+alle Estimators mit gleichem Oracle und gleichem Sampler-Schluessel einen
+einzigen Walk teilen.
+
 Schnittstelle:
     class Sample            -- node (Original-Key), degree, step
     class Sampler
         .sample(oracle) -> list[Sample]   (laeuft, bis das Budget erschoepft ist)
+        .key() -> str                     (gleiche Ziehung == gleicher Schluessel)
 """
 
 from __future__ import annotations
@@ -30,3 +37,12 @@ class Sampler(ABC):
     @abstractmethod
     def sample(self, oracle) -> list[Sample]:
         """Zieht Samples, bis BudgetExceeded auftritt; gibt das Bisherige zurueck."""
+
+    def key(self) -> str:
+        """Identitaet der Ziehung -- alles, was die Trajektorie beeinflusst.
+
+        Default ist der Name; Sampler mit Parametern muessen diese ergaenzen,
+        sonst wuerden zwei verschieden parametrierte Sampler faelschlich einen
+        Walk teilen.
+        """
+        return self.name

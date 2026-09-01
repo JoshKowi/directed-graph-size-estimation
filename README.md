@@ -235,6 +235,7 @@ Code/
   run_experiment.py     CLI: Experiment ausfuehren
   plot_results.py       CLI: Plots erzeugen
   check_nested.py       CLI: genestete Budgets gegen Einzellaeufe pruefen
+  check_shared.py       CLI: geteilte Walks gegen Einzellaeufe pruefen
   build_instances_only.py  CLI: Adjazenzliste auf Instanzen filtern
   graphs/               Graph als CSR (Integer-IDs + Namensliste), Loader, Views
   oracles/              Graph-Zugriff mit Kostenzaehlung und Budget
@@ -371,6 +372,70 @@ Der abgeleitete Zufallsstrom haengt in diesem Modus an (Seed, Estimator, Lauf)
 statt an (Seed, Estimator, Budget, Lauf) -- es gibt ja nur noch einen Lauf.
 Ergebnisse beider Modi sind deshalb nicht Zeile fuer Zeile vergleichbar, wohl
 aber Verteilung gegen Verteilung.
+
+## Ein Walk, mehrere Auswertungen: `--share-walks`
+
+Thinning, Safety Margin und die Wahl der Formel (mit/ohne Gewichte) sind
+**reine Nachbearbeitung einer Trajektorie** -- der Walk selbst haengt nur an
+Oracle, Sampler, Budget und Zufallsstrom. Mit `--share-walks` teilen sich
+deshalb alle Estimators mit gleichem `walk_key` einen einzigen Walk:
+
+```bash
+python run_experiment.py --graphs slashdot --views undirected \
+    --share-walks --checkpoint-budgets \
+    --estimators wis-katzir__rw-restart wis-katzir__rw-restart__margin10 \
+                 rw_plain__restart__none rw_plain__restart__shifted
+```
+
+Wer sich mit wem zusammentut, ergibt sich von selbst aus Oracle und Sampler:
+
+| Walk-Gruppe | Estimators |
+|---|---|
+| `CrawlOracle \| random_walk_restart` | `rw_plain__restart__*`, `wis-katzir__rw-restart*`, `rw_weighted__restart__none` |
+| `UniformNodeOracle \| uniform` | `uniform_collision`, `uniform_collision_weighted` |
+| `ShortWalkIndependentOracle(steps=5) \| uniform` | `uis__walk5`, `wis-katzir__walk5` |
+
+Die Gruppierung geht ueber die Formel hinweg -- mit und ohne Gewichte laufen
+auf denselben Samples. Genau das behauptet der Kommentar bei `*__walk5` in der
+REGISTRY schon lange ("beide Formeln auf denselben Samples"), stimmte aber
+erst mit diesem Schalter.
+
+**Zwei Dinge gewinnt man dabei.** Rechenzeit: gemessen auf Slashdot
+symmetrisiert, 12 Estimators x 6 Budgets x 5 Laeufe, `--jobs 1`, zusammen mit
+`--checkpoint-budgets`:
+
+| | Laufzeit | CPU in den Estimators |
+|---|---|---|
+| ohne `--share-walks` | 10.6 s | 8.3 s |
+| mit | **3.5 s** | **1.5 s** |
+
+Aus 12 Walk-Sorten werden zwei Gruppen. Und, wichtiger: der Vergleich
+zwischen den Varianten wird **gepaart**. Ob `margin50` besser ist als
+`margin20`, wird sonst an zwei verschiedenen Walks gemessen, der Unterschied
+enthaelt also RNG-Rauschen -- obwohl die Frage rein deterministisch ist.
+
+**Was sich aendert.** Der abgeleitete Zufallsstrom haengt in diesem Modus am
+Walk-Schluessel statt am Estimator-Namen -- auch bei Gruppen der Groesse eins.
+Das ist Absicht: sonst haenge das Ergebnis eines Estimators davon ab, welche
+anderen zufaellig mit ausgewaehlt wurden. Ergebnisse aus beiden Modi sind
+deshalb nicht Zeile fuer Zeile vergleichbar, wohl aber Verteilung gegen
+Verteilung. Die Zeilen einer Gruppe sind korreliert; die CSV haelt das in der
+Spalte `walk_group` fest, die Grafiken vermerken es oben rechts.
+
+Je Wiederholung laeuft weiterhin ein eigener Walk -- die Streuung ueber die
+Laeufe bleibt also aussagekraeftig, es entfaellt nur die *unnoetige* Streuung
+zwischen den Varianten.
+
+**Exakt, nicht genaehert:** `check_shared.py` rechnet fuer jede Gruppe die
+geteilte gegen die einzelne Auswertung mit demselben Seed und vergleicht
+Schaetzwert, Kosten, Abbruchgrund und Sample-Zahl auf Gleichheit.
+
+```bash
+python check_shared.py --graph slashdot
+```
+
+`capture_recapture` faellt aus dem Modus heraus (es teilt sein Budget vorab
+auf zwei Walks auf und hat keinen `walk_key`) und laeuft unveraendert einzeln.
 
 ## Neuen Estimator hinzufuegen
 

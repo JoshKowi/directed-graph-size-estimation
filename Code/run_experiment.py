@@ -22,6 +22,11 @@ Budget einen eigenen zu rechnen -- dieselben Zahlen bei rund 40 % weniger
 Rechenzeit, dafuer sind die Punkte eines Laufs ueber die Budgets genestet.
 Siehe experiment/runner.py und check_nested.py.
 
+`--share-walks` laesst Estimators mit gleichem Oracle und Sampler *einen*
+Walk teilen und nur die Auswertung variieren -- gedacht fuer Vergleiche von
+Thinning, Safety Margin oder mit/ohne Gewichte, die alle auf derselben
+Trajektorie sitzen sollten. Siehe check_shared.py.
+
 `--start-node` waehlt den Einstiegsknoten des Crawls (Default: der erste aus
 config.SEED_NODES, bei den GPT-Basen "Vannevar Bush"); `--start-node all`
 rechnet alle hinterlegten nacheinander. Jeder Einstieg landet in eigenen
@@ -69,6 +74,12 @@ def main() -> None:
                         "aus config.SEED_NODES (bei den GPT-Basen 'Vannevar "
                         "Bush'). 'all' rechnet alle hinterlegten Einstiegsknoten "
                         "nacheinander, jeder in eigene Dateien.")
+    p.add_argument("--share-walks", action="store_true",
+                   help="Estimators, die denselben Walk erzeugen wuerden (gleiches "
+                        "Oracle und gleicher Sampler), teilen ihn: Thinning, "
+                        "Weighting und Formel sind reine Nachbearbeitung. Exakt "
+                        "dieselben Zahlen, deutlich weniger Arbeit -- und der "
+                        "Vergleich zwischen den Varianten wird gepaart.")
     p.add_argument("--checkpoint-budgets", action="store_true",
                    help="alle Budgets aus einem Lauf ablesen statt je Budget einen "
                         "eigenen zu rechnen. Exakt dieselben Zahlen, spart "
@@ -145,6 +156,7 @@ def main() -> None:
             collect_visits=not args.no_visits,
             n_jobs=args.jobs,
             nested_budgets=args.checkpoint_budgets,
+            share_walks=args.share_walks,
             start_nodes=starts,
             log=lambda m: print(m, flush=True),
         )

@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 15:47 |
+| Daten vom | 2026-09-01 15:54 |
 |---|---|
-| Code-Fingerabdruck | `cb43125105ed` |
+| Code-Fingerabdruck | `5d874fad6e4e` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -27,21 +27,22 @@ reproduzierbar) -- diese Datei haelt fest, woher sie stammen.
 
 ### `Slashdot0811__estimates.csv`
 
-Schaetzungen fuer **Slashdot (Nov 2008)** (`Slashdot0811`), 120 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **Slashdot (Nov 2008)** (`Slashdot0811`), 240 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: directed, undirected
-- Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 77 360)
+- Views: undirected
+- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 (relativ zu |V| = 77 360)
 - Laeufe je Punkt: 10
-- Estimators: uniform_collision
+- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
 - Seed: 42
-- Abbruchgrund: {'budget': 120}
+- Einstieg: 3285
+- Abbruchgrund: {'budget': 240}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs Slashdot0811 \
-    --estimators uniform_collision \
-    --views directed undirected
+    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
+    --views undirected
 ```
 
 ### `Slashdot0811__view_comparison.csv`
@@ -50,7 +51,27 @@ Gepaarter Vergleich der Kantensichten fuer **Slashdot (Nov 2008)** (`results.com
 
 ### `Slashdot0811__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42), 28 846 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42), 189 926 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+
+### `gpt4_io__estimates.csv`
+
+Schaetzungen fuer **GPT-4 knowledge graph (instances only)** (`gpt4_io`), 200 Zeilen (= Estimator x View x Budget x Lauf).
+
+- Views: undirected
+- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 6 492 586)
+- Laeufe je Punkt: 10
+- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
+- Seed: 42
+- Einstieg: Vannevar Bush
+- Abbruchgrund: {'budget': 200}
+
+Erzeugt mit:
+
+```bash
+python run_experiment.py --graphs gpt4_io \
+    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
+    --views undirected
+```
 
 ### `gpt4o_adj_from_dataset__estimates.csv`
 
@@ -61,6 +82,7 @@ Schaetzungen fuer **GPT-4o knowledge graph (with literals)** (`gpt4o_adj_from_da
 - Laeufe je Punkt: 10
 - Estimators: uniform_collision
 - Seed: 42
+- Einstieg: gleichverteilt
 - Abbruchgrund: {'budget': 120}
 
 Erzeugt mit:
@@ -81,21 +103,22 @@ Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (with li
 
 ### `gpt4o_io__estimates.csv`
 
-Schaetzungen fuer **GPT-4o knowledge graph (instances only)** (`gpt4o_io`), 120 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4o knowledge graph (instances only)** (`gpt4o_io`), 200 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: directed, undirected
-- Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 5 693 001)
+- Views: undirected
+- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
 - Laeufe je Punkt: 10
-- Estimators: uniform_collision
+- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
 - Seed: 42
-- Abbruchgrund: {'budget': 120}
+- Einstieg: Vannevar Bush
+- Abbruchgrund: {'budget': 200}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4o_io \
-    --estimators uniform_collision \
-    --views directed undirected
+    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
+    --views undirected
 ```
 
 ### `gpt4o_io__view_comparison.csv`
@@ -118,7 +141,9 @@ Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (instanc
 | `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |
 | `stopped_by` | warum der Lauf endete -- normal `budget` |
 | `seed` | Zufallsstrom des Laufs (siehe Dateiname) |
+| `start_node` | Einstiegsknoten des Crawls (`config.SEED_NODES`) |
 | `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |
+| `walk_group` | Zeilen mit gleichem Wert stammen aus *einem* Walk |
 | `extra_*` | verfahrensspezifisch, z.B. `extra_n_samples` |
 
 Ist `nested` wahr, stammen alle Budgets einer Laufnummer aus *einem*
@@ -128,6 +153,13 @@ Je Budget ist die Verteilung dieselbe -- die Punkte einer Laufnummer
 sind aber ueber die Budgets *genestet* und nicht unabhaengig. `seconds`
 steht dann vollstaendig beim groessten Budget, die kleineren tragen 0.
 Besuchszaehler entstehen in diesem Modus nur fuer das groesste Budget.
+
+Steht in `walk_group` ein Wert, haben sich mehrere Estimators einen
+Walk geteilt (`--share-walks`): Thinning, Weighting und Formel sind
+reine Nachbearbeitung derselben Trajektorie. Ihre Zeilen sind damit
+gepaart -- fuer den Vergleich *zwischen* ihnen ein Gewinn, aber sie
+sind keine unabhaengigen Beobachtungen. `seconds` steht auch hier nur
+beim ersten Estimator der Gruppe.
 
 Steht in `stopped_by` etwas anderes als `budget`, hat nicht das
 Kostenmodell den Lauf beendet -- die Zahlen sind dann mit Vorsicht zu

@@ -123,6 +123,8 @@ def load_results(graph_name: str | None = None, kind: str = "estimates",
             df["seed"] = s
         if "nested" not in df.columns:    # ... bzw. vor --checkpoint-budgets
             df["nested"] = False
+        if "walk_group" not in df.columns:   # ... bzw. vor --share-walks
+            df["walk_group"] = None
         if "start_node" not in df.columns:   # ... bzw. vor --start-node
             known = config.seed_nodes(g)
             df["start_node"] = str(known[0]) if known else "<zufaellig>"
@@ -165,6 +167,8 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
         df = df.assign(nested=False)
     if "start_node" not in df.columns:
         df = df.assign(start_node="<zufaellig>")
+    if "walk_group" not in df.columns:
+        df = df.assign(walk_group=None)
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
@@ -180,6 +184,9 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             # Genestet: die Punkte einer Laufnummer stammen aus einem Lauf und
             # sind ueber die Budgets korreliert (siehe experiment/runner.py).
             nested=("nested", "any"),
+            # Geteilter Walk: dieselbe Trajektorie wie die anderen Estimators
+            # derselben Gruppe -- der Vergleich zwischen ihnen ist gepaart.
+            shared=("walk_group", "first"),
             # fuer die Achsenbeschriftung: erlaubtes und tatsaechlich
             # ausgegebenes Budget (siehe plotting.ranges.budget_ticks)
             budget_abs=("budget_abs", "first"),
