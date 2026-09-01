@@ -31,8 +31,9 @@ PLOTS_DIR = ROOT / "data" / "plots"
 # Die Kurzbeschreibungen stammen aus adjacencies/README.txt.
 GRAPH_LABELS = {
     "Slashdot0811": "Slashdot (Nov 2008)",
-    "adjacency_list_uni": "GPT-4 knowledge graph (all edges)",
-    "gpt4o_adj_from_dataset": "GPT-4o knowledge graph (all edges)",
+    "adjacency_list_uni": "GPT-4 knowledge graph (with literals)",
+    "gpt4_io": "GPT-4 knowledge graph (instances only)",
+    "gpt4o_adj_from_dataset": "GPT-4o knowledge graph (with literals)",
     "gpt4o_io": "GPT-4o knowledge graph (instances only)",
     "wiki-topcats": "Wikipedia (top categories)",
 }
@@ -49,6 +50,7 @@ def graph_label(name: str) -> str:
 GRAPH_ALIASES = {
     "slashdot": "Slashdot0811",
     "gpt-4": "adjacency_list_uni",
+    "gpt-4-io": "gpt4_io",
     "gpt-4o": "gpt4o_adj_from_dataset",
     "gpt-4o-io": "gpt4o_io",
     "wiki": "wiki-topcats",

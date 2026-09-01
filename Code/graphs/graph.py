@@ -132,8 +132,43 @@ def _node_ids(adjacency: dict) -> list:
     return keys + sorted(dangling, key=str)
 
 
+def _simplify(indptr, indices, n: int):
+    """Mehrfachkanten und Schlingen entfernen -- der Graph wird einfach.
+
+    Entwurfsentscheidung (siehe README, "Entwurfsentscheidungen"): eine Kante
+    zaehlt einmal, egal wie viele Fakten sie erzeugt haben, und ein Knoten ist
+    nicht sein eigener Nachbar. Beides ist noetig, damit `deg` das misst, was
+    die Schaetzer unterstellen: die Zahl der *verschiedenen* erreichbaren
+    Nachbarn.
+
+    Ohne das war der Graph zwischen den Sichten inkonsistent -- graphs.views
+    dedupliziert beim Symmetrisieren, die gerichtete Sicht tat es nicht. Auf
+    gpt4o_io waren 11,3 % aller Kanten Mehrfachnennungen (32 928 678 gegen
+    29 574 090), auf adjacency_list_uni 4,1 %; genau diese beiden Sichten
+    werden aber gegeneinander verglichen.
+
+    Verfahren wie in graphs.views._symmetric_csr: (u, v) in *eine* Zahl packen,
+    sortieren, deduplizieren. Danach steht die Kantenliste bereits im
+    CSR-Layout, ohne eine einzige Python-Schleife.
+    """
+    src = np.repeat(np.arange(n, dtype=np.int64), np.diff(indptr))
+    dst = indices.astype(np.int64)
+    keep = src != dst                     # Schlingen raus
+    key = np.unique(src[keep] * n + dst[keep])
+    del src, dst, keep
+    counts = np.bincount(key // n, minlength=n)
+    out = np.zeros(n + 1, dtype=PTR_DTYPE)
+    np.cumsum(counts, out=out[1:])
+    return out, (key % n).astype(ID_DTYPE)
+
+
 def load_pickle(path: Path) -> Graph:
     """Laedt eine .pkl-Adjazenzliste und baut daraus die CSR-Struktur.
+
+    Der Graph wird dabei *einfach* gemacht: Mehrfachkanten und Schlingen
+    fallen weg (siehe _simplify). Die Knotenmenge bleibt vollstaendig -- auch
+    Knoten, die nur als Objekt vorkommen und keine ausgehenden Kanten haben,
+    sind Teil von V und damit Teil der gesuchten Groesse |V|.
 
     Das dict wird danach freigegeben -- ab hier lebt der Graph nur noch in den
     drei Arrays plus der Namensliste. Die .pkl-Datei wird nie geschrieben.
@@ -162,4 +197,5 @@ def load_pickle(path: Path) -> Graph:
     )
 
     del adjacency, index
+    indptr, indices = _simplify(indptr, indices, n)
     return Graph(indptr, indices, names, name=path.stem)

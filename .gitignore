@@ -3,6 +3,10 @@ __pycache__/
 .venv/
 adjacencies/*.pkl
 
+# Typtabellen der Wissensgraphen (name, type, batch_id, ...), je ~2.5 GB.
+# Quelle fuer build_instances_only.py, nicht selbst erzeugt.
+nodes/*.pkl
+
 # Rohergebnisse: gross (Slashdot0811__visits.csv allein ~90 MB) und aus dem
 # Code jederzeit reproduzierbar. Die erzeugte README bleibt drin.
 data/results/*

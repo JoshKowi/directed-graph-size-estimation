@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 13:47 |
+| Daten vom | 2026-08-26 15:47 |
 |---|---|
-| Code-Fingerabdruck | `f42b56851628` |
+| Code-Fingerabdruck | `cb43125105ed` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -54,7 +54,7 @@ Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42)
 
 ### `gpt4o_adj_from_dataset__estimates.csv`
 
-Schaetzungen fuer **GPT-4o knowledge graph (all edges)** (`gpt4o_adj_from_dataset`), 120 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4o knowledge graph (with literals)** (`gpt4o_adj_from_dataset`), 120 Zeilen (= Estimator x View x Budget x Lauf).
 
 - Views: directed, undirected
 - Budgets: 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02 (relativ zu |V| = 15 723 674)
@@ -73,11 +73,11 @@ python run_experiment.py --graphs gpt4o_adj_from_dataset \
 
 ### `gpt4o_adj_from_dataset__view_comparison.csv`
 
-Gepaarter Vergleich der Kantensichten fuer **GPT-4o knowledge graph (all edges)** (`results.compare_views`). Entsteht beim Plotten.
+Gepaarter Vergleich der Kantensichten fuer **GPT-4o knowledge graph (with literals)** (`results.compare_views`). Entsteht beim Plotten.
 
 ### `gpt4o_adj_from_dataset__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (all edges)** (Seed 42), 5 860 816 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (with literals)** (Seed 42), 5 860 816 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ### `gpt4o_io__estimates.csv`
 

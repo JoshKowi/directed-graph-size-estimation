@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-08-26 13:47 |
+| Daten vom | 2026-08-26 15:47 |
 |---|---|
-| Code-Fingerabdruck | `f42b56851628` |
+| Code-Fingerabdruck | `cb43125105ed` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -93,23 +93,23 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 ### `adjacency_list_uni__seed100__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 100): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 100` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 100): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 100` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__seed123__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 123): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 123` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 123): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 123` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__seed1__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 1): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 1` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 1): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected --seed 1` (`Code/diagnose_walk.py`).
 
 ### `adjacency_list_uni__walk_diagnosis.png`
 
-Diagnose eines Random Walks auf **GPT-4 knowledge graph (all edges)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
 
 ### `gpt4o_adj_from_dataset__ranges.png`
 
-Uebersichtsraster fuer **GPT-4o knowledge graph (all edges)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
+Uebersichtsraster fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
 
 ### `gpt4o_io__ranges.png`
 

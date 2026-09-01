@@ -18,10 +18,140 @@ Knotenzahl |V| eines Graphen schaetzen.
 
 Alle Skripte werden aus dem Ordner `Code/` heraus gestartet.
 
+## Entwurfsentscheidungen
+
+Was ein "Knoten" und was eine "Kante" ist, ist bei diesen Daten keine
+Selbstverstaendlichkeit -- und jede Festlegung verschiebt die Zahl, die
+geschaetzt werden soll. Deshalb stehen sie hier, mit Begruendung und Folgen.
+
+### 1. Mehrfachkanten werden entfernt
+
+Die Quellen sind Tripel `(Subjekt, Praedikat, Objekt)`, die Adjazenzliste
+kennt aber nur `(Subjekt, Objekt)`. Mehrere Fakten ueber dasselbe Paar fallen
+dadurch auf dieselbe Kante zusammen und stehen mehrfach in der Liste.
+
+*Entscheidung: eine Kante zaehlt einmal.* Der Grad soll die Zahl der
+**verschiedenen** erreichbaren Nachbarn sein -- genau das unterstellen die
+Gewichte `1/deg` und das gradproportionale Ziehen. Umgesetzt in
+`graphs.graph._simplify` beim Laden, also fuer alle Sichten gleich.
+
+Der Anteil betroffener Kanten:
+
+| Graph | Kanten roh | ohne Mehrfachnennung | |
+|---|---|---|---|
+| Slashdot | 905 468 | 905 468 | 1.000x |
+| gpt-4 | 100 138 669 | 96 212 315 | 1.041x |
+| gpt-4o-io | 32 928 678 | 29 574 090 | 1.113x |
+
+Das war vorher **inkonsistent**: `graphs.views._symmetric_csr` dedupliziert
+beim Symmetrisieren schon immer, die gerichtete Sicht tat es nicht. Bei
+gpt-4o-io verglich man also 11 % Mehrfachkanten gegen keine -- und genau
+diese beiden Sichten stehen im Zentrum der Auswertung.
+
+### 2. Schlingen werden entfernt
+
+*Entscheidung: ein Knoten ist nicht sein eigener Nachbar.* Eine Schlinge
+bringt einen Crawler nicht weiter, kostet aber eine Anfrage und zaehlt in
+`deg` mit.
+
+Das ist mehr als Kosmetik: in `Slashdot0811.pkl` enthalten **77 307 von
+77 316** Adjazenzlisten den Knoten selbst. Ohne sie sinkt die Kantenzahl von
+905 468 auf 828 161 (-8,5 %). Vorher filterte nur der Sampler
+(`allow_self_loops=False`) die Schlinge beim *Schritt* heraus, waehrend sie im
+Grad weiter mitzaehlte -- der Walk rechnete also mit einem Grad, den er nicht
+nutzen konnte. Die 6 418 Slashdot-Knoten, deren einzige Kante auf sie selbst
+zeigte, sind jetzt ehrliche Sackgassen mit Grad 0.
+
+### 3. |V| = alle Knoten, auch die ohne ausgehende Kanten
+
+*Entscheidung: die gesuchte Groesse ist die volle Knotenmenge* -- die
+Schluessel der Adjazenzliste **plus** alle Knoten, die nur als Objekt
+vorkommen.
+
+Das ist die folgenreichste Festlegung, denn sie definiert die Wahrheit, gegen
+die gemessen wird. Der Anteil der Knoten ohne ausgehende Kanten:
+
+| Graph | \|V\| | davon ohne ausgehende Kanten |
+|---|---|---|
+| gpt-4 | 18 144 908 | 66.4 % |
+| gpt-4o-io | 5 693 001 | 53.3 % |
+| Slashdot | 77 360 | 0.06 % |
+
+Wer nur die Schluessel zaehlte, suchte eine dreimal kleinere Zahl. Die Folge
+ist an einer Stelle sichtbar und dort auch dokumentiert: gradproportionales
+Ziehen (`DegWeightedIndependentOracle`) kann Knoten mit `deg_out = 0`
+prinzipiell nie ziehen und schaetzt deshalb korrekt die Groesse von
+`{v : deg_out(v) > 0}` -- bei gpt-4o-io stabil 0.4635 x |V|. Das ist kein
+Fehler des Schaetzers, sondern die Antwort auf eine andere Frage.
+
+### 4. Literale gehoeren nicht in den Graphen
+
+Die GPT-Wissensgraphen enthalten neben Entitaeten auch Literale ("person",
+"1890-03-11", "American") und unbrauchbare Fragmente ("<pre>",
+"about 708,127 (2020) "). Die nodes-Tabellen unter `nodes/` typisieren jeden
+Namen als `instance`, `literal` oder `undefined`.
+
+*Entscheidung: kuenftige Adjazenzlisten enthalten nur Instanzen.* Gefiltert
+wird auf beiden Kantenseiten; ein Schluessel, dessen Nachbarn alle Literale
+waren, bleibt als Knoten ohne ausgehende Kanten erhalten (siehe 3.).
+
+```bash
+python build_instances_only.py --adjacency adjacency_list_uni \
+    --nodes gpt4_nodes --out gpt4_io
+```
+
+**Welche nodes-Datei zu welchem Graphen gehoert**, sagen die Dateinamen nicht
+zuverlaessig -- entschieden wurde es ueber die Knotenmengen. Anteil der
+Knoten eines Graphen, die in der jeweiligen Tabelle vorkommen:
+
+| | `gpt4_nodes` (18 185 374) | `gpt1_nodes` (15 836 295) |
+|---|---|---|
+| `adjacency_list_uni`, \|V\| = 18 144 908 | **100.00 %** | 14.93 % |
+| `gpt4o_adj_from_dataset`, \|V\| = 15 723 674 | 16.52 % | **95.26 %** |
+
+Eindeutiger geht es nicht: `gpt4_nodes` deckt `adjacency_list_uni` bis auf
+485 Namen vollstaendig ab. Dazu passen die Zeitstempel (`created_at`):
+`gpt1_nodes` beginnt am 2024-11-20, `gpt4_nodes` am 2025-06-06 -- und beide
+starten bei derselben Saat-Entitaet `Vannevar Bush` mit `bfs_level = 0`.
+`gpt1` ist also die aeltere Erhebung (gpt-4o), `gpt4` die neuere (gpt-4).
+
+Was der Filter bewirkt (`gpt-4` -> `gpt-4-io`):
+
+| | gpt-4 | gpt-4-io |
+|---|---|---|
+| \|V\| | 18 144 908 | **6 492 586** |
+| Kanten | 96 212 315 | 45 638 776 |
+| ohne ausgehende Kanten | 66.4 % | **9.7 %** |
+| groesster Ausgangsgrad | 8 401 (`King`) | 4 237 (`King`) |
+| groesster Eingangsgrad | 1 062 058 (`person`) | 920 251 (`United States`) |
+
+Der Unterschied ist nicht kosmetisch: die Knoten ohne ausgehende Kanten gehen
+von zwei Dritteln auf ein Zehntel zurueck, und der groesste Eingangsgrad
+gehoert nicht mehr einem Literal (`person`), sondern einer echten Entitaet.
+Fuer Random Walks auf der gerichteten Sicht ist das ein anderer Graph.
+
+Die Altbestaende bleiben zum Vergleich liegen: `gpt-4` und `gpt-4o` enthalten
+Literale, `gpt-4-io` und `gpt-4o-io` nicht.
+
+### Noch offen
+
+- **Entitaets-Identitaet.** `Yoshitomo Nara` und `Nara Yoshitomo` sind zwei
+  Knoten mit je ueber 100 000 Nachbarn -- vermutlich dieselbe Person. Es wird
+  nicht normalisiert (weder Gross-/Kleinschreibung noch Alias-Aufloesung),
+  |V| ist dadurch tendenziell zu gross.
+- **Was das Orakel in der Praxis liefert.** Modelliert sind nur ausgehende
+  Kanten. Ob eine reale Schnittstelle auch eingehende liefert, entscheidet,
+  ob die `undirected`-Sicht umsetzbar ist oder blosse Vergleichsgroesse
+  bleibt.
+- **Einstiegspunkte.** Gestartet wird gleichverteilt ueber V. Realistischer
+  waeren wenige bekannte Startknoten -- bei gerichteten Graphen mit Senken
+  entscheidet der Start messbar mit (siehe `--seed`).
+
 ## Struktur
 
 ```
 adjacencies/            originale .pkl-Adjazenzlisten (unveraendert)
+nodes/                  Typtabellen der Wissensgraphen (name, type, ...)
 data/results/           CSVs pro Graph (Schaetzungen + Besuchsstatistik)
 data/plots/             erzeugte Plots
 Code/
@@ -29,6 +159,7 @@ Code/
   run_experiment.py     CLI: Experiment ausfuehren
   plot_results.py       CLI: Plots erzeugen
   check_nested.py       CLI: genestete Budgets gegen Einzellaeufe pruefen
+  build_instances_only.py  CLI: Adjazenzliste auf Instanzen filtern
   graphs/               Graph als CSR (Integer-IDs + Namensliste), Loader, Views
   oracles/              Graph-Zugriff mit Kostenzaehlung und Budget
     global_access.py      setzt Kenntnis von V voraus (gleichverteiltes Ziehen)
@@ -304,10 +435,10 @@ Kosten), `unique_nodes_used` (Statistik), `cached_queries` sowie
 
 ## Bekannte Vereinfachungen
 
-- |V| = alle vorkommenden Knoten, also die Eintraege der Adjazenzliste **plus**
-  die Knoten, die nur als Nachbar auftauchen (keine ausgehenden Kanten). Als
-  CSR brauchen sie keinen Sonderfall: sie haben `indptr[u] == indptr[u+1]` und
-  damit Grad 0. Die .pkl-Dateien werden nie geschrieben.
+- |V| = alle vorkommenden Knoten (siehe "Entwurfsentscheidungen", Punkt 3).
+  Als CSR brauchen sie keinen Sonderfall: sie haben `indptr[u] == indptr[u+1]`
+  und damit Grad 0. Die .pkl-Dateien unter `adjacencies/` werden nie
+  ueberschrieben; neue entstehen nur ueber `build_instances_only.py`.
 - Der Random Walk unterstellt pi(u) ~ deg(u); das gilt streng nur ungerichtet.
   Ueber `--views undirected` laesst sich der Effekt messen.
 - Der Collision-Schaetzer unterstellt *unabhaengige* Samples aus pi. Ein Random
