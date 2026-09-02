@@ -314,6 +314,24 @@ wuerden, werden gar nicht erst gestartet; bei gemischten Paketen (geteilte
 Walks, genestete Budgets) faellt die bekannte Zeile nach der Rechnung weg.
 `--replace` erzwingt das Neurechnen.
 
+**Geprueft wird, bevor der Graph geladen wird.** Das Laden dauert bei den
+grossen Wissensgraphen ueber eine Minute; steht schon alles in der Datei, wird
+es gespart:
+
+```
+$ python run_experiment.py --graphs gpt-4-io --estimators uniform-collision
+[gpt4_io] alles schon gerechnet -- data/results/gpt4_io__estimates.csv
+[gpt4_io] nichts zu tun, Graph wird nicht geladen (mit --replace neu rechnen)
+   4 s statt 140 s
+```
+
+Die Default-Budgets brauchen dafuer |V| (gross oder klein) -- das liest
+`_known_size()` aus der ersten Zeile einer vorhandenen Ergebnisdatei, statt
+den Graphen zu laden. Gibt es noch keine Ergebnisse, ist ohnehin zu rechnen.
+Weicht das gespeicherte |V| spaeter vom geladenen ab, bricht der Lauf mit
+einem Hinweis auf `--deprecate` ab: dann wurden die alten Zahlen auf einem
+anderen Graphen gerechnet und duerfen nicht ergaenzt werden.
+
 **Bilder auch nicht.** Existiert der Dateiname schon, entsteht `...-2.png`,
 `...-3.png` (siehe `config.unique_path`). Zwei Laeufe mit verschiedenen
 Parametern liegen damit nebeneinander statt uebereinander.

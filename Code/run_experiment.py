@@ -53,6 +53,76 @@ from graphs.views import VIEWS
 import provenance
 
 
+def _default_budgets(n_nodes: int, name: str, log=print) -> list[float]:
+    large = n_nodes >= config.LARGE_GRAPH_NODES
+    if large:
+        log(f"[{name}] grosser Graph -- 20-%-Budget ausgelassen "
+            f"(mit --budgets erzwingbar)")
+    return list(config.DEFAULT_BUDGETS_LARGE if large else config.DEFAULT_BUDGETS)
+
+
+def _known_size(graph_name: str) -> int | None:
+    """|V| aus vorhandenen Ergebnissen -- ohne den Graphen zu laden.
+
+    Gebraucht nur, um die Default-Budgets zu waehlen (gross/klein). Das Laden
+    dauert bei den grossen Wissensgraphen ueber eine Minute und soll erst
+    passieren, wenn feststeht, dass ueberhaupt zu rechnen ist. Gibt es noch
+    keine Ergebnisse, ist ohnehin zu rechnen -- dann liefert das hier None und
+    der Graph wird geladen.
+
+    |V| haengt nicht an Seed, Einstieg oder View, deshalb genuegt die erste
+    beste Ergebnisdatei dieses Graphen; gelesen wird nur ihre erste Zeile.
+    """
+    import pandas as pd
+
+    for path in sorted(config.RESULTS_DIR.glob(f"{graph_name}__*estimates.csv")):
+        try:
+            head = pd.read_csv(path, nrows=1)
+        except Exception:                                     # noqa: BLE001
+            continue
+        if "true_size" in head.columns and len(head):
+            return int(head["true_size"].iloc[0])
+    return None
+
+
+def _resolve_starts(name: str, args) -> list:
+    """Einstiegsknoten des Laufs -- braucht den Graphen nicht."""
+    known = config.seed_nodes(name)
+    if not known:
+        if args.start_node:
+            raise SystemExit(f"Fuer {name} sind keine Einstiegsknoten hinterlegt "
+                             "(config.SEED_NODES)")
+        return [None]                # gleichverteilter Einstieg
+    if args.start_node is None:
+        return [known[0]]
+    if args.start_node.lower() == "all":
+        return known
+    match = [k for k in known if str(k).lower() == args.start_node.lower()]
+    if not match:
+        raise SystemExit(
+            f"{args.start_node!r} ist kein Einstiegsknoten von {name}. "
+            f"Moeglich: {', '.join(map(str, known))} oder 'all'")
+    return match
+
+
+def _existing_runs(name: str, seed: int, starts: list) -> set:
+    """Welche (View, Estimator, Budget, Lauf) schon in den Zieldateien stehen."""
+    have: set = set()
+    for start in starts:
+        have |= results_io.run_keys(
+            results_io.load_one(name, seed=seed, start=start))
+    return have
+
+
+def _report_done(name: str, seed: int, starts: list) -> None:
+    for start in starts:
+        path = results_io._path(name, "estimates", seed, start)
+        if path.exists():
+            print(f"[{name}] alles schon gerechnet -- {path}", flush=True)
+    print(f"[{name}] nichts zu tun, Graph wird nicht geladen "
+          "(mit --replace neu rechnen)", flush=True)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list", action="store_true", help="Graphen und Estimators anzeigen")
@@ -124,6 +194,23 @@ def main() -> None:
               else "  -> keine Ergebnisse zum Verschieben da", flush=True)
 
     for name in graph_names:
+        starts = _resolve_starts(name, args)
+        skip = set() if args.replace else _existing_runs(name, args.seed, starts)
+        planned_for = lambda bs: {(v, e.name, b, r)             # noqa: E731
+                                  for v in args.views for e in ests
+                                  for b in bs for r in range(args.runs)}
+
+        # Reihenfolge mit Absicht: erst pruefen, dann laden. Das Laden dauert
+        # bei den grossen Wissensgraphen ueber eine Minute und lohnt nicht,
+        # wenn alles schon gerechnet ist. Die Default-Budgets brauchen |V| --
+        # das steht in den vorhandenen Ergebnissen, sonst ist ohnehin zu tun.
+        stored_size = _known_size(name)
+        budgets = args.budgets or (None if stored_size is None
+                                   else _default_budgets(stored_size, name))
+        if budgets is not None and not planned_for(budgets) - skip:
+            _report_done(name, args.seed, starts)
+            continue
+
         t0 = time.perf_counter()
         graph = loader.load_graph(name)
         without = graph.n_nodes - graph.n_with_out_edges
@@ -132,31 +219,21 @@ def main() -> None:
               f"Kanten, {without:,} ohne), {graph.n_edges:,} Kanten".replace(",", " "),
               flush=True)
 
-        budgets = args.budgets
+        if stored_size is not None and stored_size != graph.n_nodes:
+            raise SystemExit(
+                f"[{name}] Die vorhandenen Ergebnisse wurden auf einem Graphen "
+                f"mit |V| = {stored_size:,} gerechnet, der Graph hat jetzt "
+                f"{graph.n_nodes:,}. Die Zahlen sind nicht vergleichbar -- "
+                "alte Ergebnisse mit --deprecate beiseiteschieben."
+                .replace(",", " ")
+            )
         if budgets is None:
-            large = graph.n_nodes >= config.LARGE_GRAPH_NODES
-            budgets = list(config.DEFAULT_BUDGETS_LARGE if large
-                           else config.DEFAULT_BUDGETS)
-            if large:
-                print(f"[{name}] grosser Graph -- 20-%-Budget ausgelassen "
-                      f"(mit --budgets erzwingbar)", flush=True)
-        known = config.seed_nodes(name)
-        if not known:
-            starts = [None]          # kein Eintrag -> gleichverteilter Einstieg
-            if args.start_node:
-                raise SystemExit(f"Fuer {name} sind keine Einstiegsknoten hinterlegt "
-                                 "(config.SEED_NODES)")
-        elif args.start_node is None:
-            starts = [known[0]]
-        elif args.start_node.lower() == "all":
-            starts = known
-        else:
-            match = [k for k in known if str(k).lower() == args.start_node.lower()]
-            if not match:
-                raise SystemExit(
-                    f"{args.start_node!r} ist kein Einstiegsknoten von {name}. "
-                    f"Moeglich: {', '.join(map(str, known))} oder 'all'")
-            starts = match
+            budgets = _default_budgets(graph.n_nodes, name)
+            if not planned_for(budgets) - skip:
+                _report_done(name, args.seed, starts)
+                loader.clear_cache()
+                continue
+
         print(f"[{name}] Einstieg: {', '.join(map(str, starts))}"
               if starts != [None] else f"[{name}] Einstieg: gleichverteilt", flush=True)
 
@@ -167,28 +244,11 @@ def main() -> None:
               + (f" x {len(starts)} Einstiegsknoten" if len(starts) > 1 else ""),
               flush=True)
 
-        # Was schon in der Zieldatei steht, wird nicht neu gerechnet. Getrennt
-        # je Einstiegsknoten, weil jeder in eine eigene Datei schreibt.
-        skip: set = set()
-        if not args.replace:
-            for start in starts:
-                have = results_io.load_one(name, seed=args.seed, start=start)
-                skip |= results_io.run_keys(have)
-        planned = {(v, e.name, b, r)
-                   for v in args.views for e in ests
-                   for b in budgets for r in range(args.runs)}
-        todo = planned - skip
-        if not todo:
-            for start in starts:
-                path = results_io._path(name, "estimates", args.seed, start)
-                if path.exists():
-                    print(f"[{name}] alles schon gerechnet -- {path}", flush=True)
-            print(f"[{name}] nichts zu tun (mit --replace neu rechnen)", flush=True)
-            loader.clear_cache()
-            continue
+        planned = planned_for(budgets)
         if skip & planned:
             print(f"[{name}] {len(skip & planned)} von {len(planned)} Schaetzungen "
-                  f"liegen schon vor, gerechnet werden {len(todo)}", flush=True)
+                  f"liegen schon vor, gerechnet werden {len(planned - skip)}",
+                  flush=True)
 
         df, visits = run_graph(
             graph,

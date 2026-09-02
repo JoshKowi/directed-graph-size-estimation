@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-02 13:18 |
+| Daten vom | 2026-09-02 14:38 |
 |---|---|
-| Code-Fingerabdruck | `f65066705e5a` |
+| Code-Fingerabdruck | `86ba656fcc7a` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -116,13 +116,9 @@ Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 
 
 Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
 
-### `gpt4_io__ranges-2.png`
+### `gpt4_io__cap_recap.png`
 
-Uebersichtsraster fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/ranges.py`).
-
-### `gpt4_io__ranges.png`
-
-Uebersichtsraster fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/ranges.py`).
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
 ### `gpt4_io__thinning-without-weights.png`
 
@@ -135,6 +131,10 @@ Diagnose eines Random Walks auf **GPT-4 knowledge graph (instances only)** (Seed
 ### `gpt4o_adj_from_dataset__ranges.png`
 
 Uebersichtsraster fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
+
+### `gpt4o_io__cap_recap.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
 ### `gpt4o_io__ranges.png`
 

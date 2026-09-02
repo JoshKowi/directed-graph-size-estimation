@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-02 13:18 |
+| Daten vom | 2026-09-02 14:38 |
 |---|---|
-| Code-Fingerabdruck | `f65066705e5a` |
+| Code-Fingerabdruck | `86ba656fcc7a` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -55,21 +55,21 @@ Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42)
 
 ### `gpt4_io__estimates.csv`
 
-Schaetzungen fuer **GPT-4 knowledge graph (instances only)** (`gpt4_io`), 100 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4 knowledge graph (instances only)** (`gpt4_io`), 360 Zeilen (= Estimator x View x Budget x Lauf).
 
 - Views: directed, undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 6 492 586)
+- Budgets: 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 6 492 586)
 - Laeufe je Punkt: 10
-- Estimators: capture-recapture__uniform
+- Estimators: capture-recapture__uniform, uniform-collision
 - Seed: 42
 - Einstieg: Vannevar Bush
-- Abbruchgrund: {'budget': 100}
+- Abbruchgrund: {'budget': 360}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4_io \
-    --estimators capture-recapture__uniform \
+    --estimators capture-recapture__uniform uniform-collision \
     --views directed undirected
 ```
 
@@ -79,7 +79,7 @@ Gepaarter Vergleich der Kantensichten fuer **GPT-4 knowledge graph (instances on
 
 ### `gpt4_io__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4 knowledge graph (instances only)** (Seed 42), 9 065 716 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4 knowledge graph (instances only)** (Seed 42), 18 494 804 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ### `gpt4o_adj_from_dataset__estimates.csv`
 
@@ -111,22 +111,22 @@ Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (with li
 
 ### `gpt4o_io__estimates.csv`
 
-Schaetzungen fuer **GPT-4o knowledge graph (instances only)** (`gpt4o_io`), 200 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4o knowledge graph (instances only)** (`gpt4o_io`), 520 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
+- Views: directed, undirected
+- Budgets: 0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 5 693 001)
 - Laeufe je Punkt: 10
-- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
+- Estimators: capture-recapture__uniform, rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform-collision, uniform_collision
 - Seed: 42
 - Einstieg: Vannevar Bush
-- Abbruchgrund: {'budget': 200}
+- Abbruchgrund: {'budget': 520}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4o_io \
-    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
-    --views undirected
+    --estimators capture-recapture__uniform rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform-collision uniform_collision \
+    --views directed undirected
 ```
 
 ### `gpt4o_io__view_comparison.csv`
@@ -135,7 +135,7 @@ Gepaarter Vergleich der Kantensichten fuer **GPT-4o knowledge graph (instances o
 
 ### `gpt4o_io__visits.csv`
 
-Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (instances only)** (Seed 42), 2 121 482 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (instances only)** (Seed 42), 9 291 606 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ## Spalten der `__estimates.csv`
 
