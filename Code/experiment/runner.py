@@ -30,6 +30,12 @@ Estimators ohne `estimate_nested` (capture_recapture teilt sein Budget vorab
 auf zwei Walks auf, ein Praefix hat dort eine andere Struktur) laufen auch in
 diesem Modus weiter je Budget einzeln.
 
+`skip_keys` sind (View, Estimator, budget_rel, Lauf)-Tupel, die schon in der
+Ergebnisdatei stehen. Tasks, die *nur* solche Zeilen erzeugen wuerden, werden
+gar nicht erst gestartet; bei gemischten Paketen (geteilte Walks, genestete
+Budgets) faellt die schon bekannte Zeile nach der Rechnung weg. So kostet ein
+zweiter Aufruf mit zusaetzlichen Estimators nur die zusaetzlichen.
+
 `share_walks=True` legt dieselbe Idee auf die Estimator-Achse: Thinning,
 Weighting und Formel sind reine Nachbearbeitung einer Trajektorie, also teilen
 sich alle Estimators mit gleichem `walk_key` (Oracle + Sampler + Metrik) einen
@@ -53,8 +59,8 @@ Zeilen werden am Ende sortiert, damit auch die CSV reproduzierbar ist.
 
 Schnittstelle:
     run_graph(graph, estimators, budgets, n_runs, seed, views, collect_visits,
-              n_jobs, nested_budgets, share_walks, start_nodes, log)
-        -> (results_df, visits_df | None)
+              n_jobs, nested_budgets, share_walks, start_nodes, skip_keys, code,
+              log) -> (results_df, visits_df | None)
 """
 
 from __future__ import annotations
@@ -189,9 +195,12 @@ def run_graph(
     nested_budgets: bool = False,
     share_walks: bool = False,
     start_nodes=None,
+    skip_keys=None,
+    code: str | None = None,
     log=print,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     global _VIEW, _COLLECT_VISITS
+    skip = set(skip_keys or ())
     rows: list[dict] = []
     visit_rows: list[dict] = []
     t_start = time.perf_counter()
@@ -248,9 +257,14 @@ def run_graph(
                 ladders = [ladder] if nest else [[pair] for pair in ladder]
                 names = tuple(e.name for e in group)
                 cats = tuple(str(e.category) for e in group)
-                tasks += [(g, names, cats, run, seed, start, key)
-                          for g in ladders
-                          for run in range(n_runs)]
+                for g in ladders:
+                    for run in range(n_runs):
+                        # Ein Paket lohnt nur, wenn es mindestens eine noch
+                        # nicht gerechnete Zeile liefert.
+                        if skip and all((view_name, n, b, run) in skip
+                                        for n in names for b, _ in g):
+                            continue
+                        tasks.append((g, names, cats, run, seed, start, key))
 
             plain = len(estimators) * len(budgets) * n_runs
             if nested_budgets or share_walks:
@@ -269,7 +283,15 @@ def run_graph(
             # Sammelt je (Budget, Estimator), damit erst geloggt wird, wenn eine
             # ganze Gruppe fertig ist -- sonst waeren es n_runs mal so viele Zeilen.
             pending: dict[tuple, list] = {}
-            expected = len(estimators) * len(budgets)
+            # Wie viele Zeilen je (Budget, Estimator) noch kommen -- mit
+            # uebersprungenen Laeufen sind es nicht mehr zwingend n_runs.
+            wanted: Counter = Counter()
+            for g, names, _, run, _, _, _ in tasks:
+                for n in names:
+                    for b, _ in g:
+                        if (view_name, n, b, run) not in skip:
+                            wanted[(b, n)] += 1
+            expected = len(wanted)
 
             def handle(results):
                 for row, vis in results:
@@ -278,13 +300,16 @@ def run_graph(
             def handle_row(row, vis):
                 nonlocal done
                 row.update(graph=graph.name, view=view_name, true_size=true_size,
-                           rel_error=row["estimate"] / true_size - 1.0)
+                           rel_error=row["estimate"] / true_size - 1.0, code=code)
+                if (view_name, row["estimator"], row["budget_rel"],
+                        row["run"]) in skip:
+                    return      # lag schon vor (gemischtes Paket, s. skip_keys)
                 rows.append(row)
                 key = (row["budget_rel"], row["estimator"])
                 pending.setdefault(key, []).append(row)
                 if vis is not None:
                     visits.setdefault(key, Counter()).update(vis)
-                if len(pending[key]) == n_runs:
+                if len(pending[key]) == wanted.get(key, n_runs):
                     done += 1
                     grp = pending.pop(key)
                     med = pd.Series([g["estimate"] for g in grp]).median()

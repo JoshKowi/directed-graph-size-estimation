@@ -12,7 +12,23 @@ Graphen nicht gegenseitig ueberschreiben:
 Die Defaults bleiben ohne Zusatz, damit aeltere Ergebnisse weiter gefunden
 werden.
 
+Ergebnisse werden **angehaengt, nicht ueberschrieben**. Was schon gerechnet
+wurde, wird nicht noch einmal gerechnet: `RUN_KEYS` definiert, wann zwei
+Zeilen denselben Lauf beschreiben. Ein Lauf mit anderem Seed, anderem
+Einstiegsknoten, weiteren Estimators oder weiteren Budgets ergaenzt die Datei
+also nur um das Fehlende.
+
+Aendert sich etwas, das den *Verlauf* aendert (Graphaufbau, Kostenmodell,
+Sampler), sind die alten Zeilen nicht mehr vergleichbar. Dafuer gibt es
+`deprecate()`: es schiebt den ganzen Ordner-Inhalt nach
+`data/results/deprecated/<Zeit>__<Code-Fingerabdruck>/`, danach schreibt der
+naechste Lauf neue Dateien. Die Spalte `code` in jeder Zeile haelt fest,
+welche Codeversion sie erzeugt hat.
+
 Schnittstelle:
+    RUN_KEYS, run_keys(df) -> set
+    append_results(df, graph_name, kind, seed, start) -> Path
+    deprecate(reason=None) -> Path | None
     seed_tag(seed) -> str
     start_tag(graph, start_node) -> str
     parse_stem(stem) -> (graph, seed, start, kind)
@@ -27,11 +43,25 @@ Schnittstelle:
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 import config
+
+
+# Was einen Lauf eindeutig macht -- *innerhalb* einer Datei, die schon nach
+# Graph, Seed und Einstiegsknoten getrennt ist. Zwei Zeilen mit gleichen Werten
+# hier beschreiben denselben Lauf und werden nicht doppelt gerechnet.
+RUN_KEYS = ("view", "estimator", "budget_rel", "run")
+
+
+def run_keys(df: pd.DataFrame) -> set:
+    """Die Menge der Laeufe, die ein Frame bereits enthaelt."""
+    if df is None or df.empty or not all(k in df.columns for k in RUN_KEYS):
+        return set()
+    return set(df[list(RUN_KEYS)].itertuples(index=False, name=None))
 
 
 def seed_tag(seed: int | None) -> str:
@@ -96,6 +126,64 @@ def save_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
     return path
 
 
+def load_one(graph_name: str, kind: str = "estimates", seed: int | None = None,
+             start=None) -> pd.DataFrame:
+    """Genau die eine Datei, in die ein Lauf schreiben wuerde -- leer, wenn es
+    sie noch nicht gibt."""
+    path = _path(graph_name, kind, seed, start)
+    return pd.read_csv(path) if path.exists() else pd.DataFrame()
+
+
+def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
+                   seed: int | None = None, start=None) -> Path:
+    """Neue Zeilen an die vorhandene Datei anhaengen, ohne Dubletten.
+
+    Vorhandene Zeilen gewinnen: was schon gerechnet wurde, bleibt stehen. Das
+    ist der Sinn der Uebung -- ein zweiter Aufruf mit denselben Parametern
+    darf die Datei nicht veraendern.
+    """
+    config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = _path(graph_name, kind, seed, start)
+    old = pd.read_csv(path) if path.exists() else pd.DataFrame()
+    if not old.empty and not df.empty:
+        known = run_keys(old)
+        if known and all(k in df.columns for k in RUN_KEYS):
+            mask = [tuple(r) not in known
+                    for r in df[list(RUN_KEYS)].itertuples(index=False, name=None)]
+            df = df[mask]
+    combined = pd.concat([old, df], ignore_index=True) if not old.empty else df
+    sort_by = [c for c in ("view", "start_node", "budget_rel", "estimator", "run")
+               if c in combined.columns]
+    if sort_by:
+        combined = combined.sort_values(sort_by, na_position="first")
+    combined.reset_index(drop=True).to_csv(path, index=False)
+    return path
+
+
+def deprecate(reason: str | None = None) -> Path | None:
+    """Alle Ergebnisse beiseiteschieben, damit neue Dateien entstehen.
+
+    Fuer Aenderungen, die den Verlauf aendern -- Graphaufbau, Kostenmodell,
+    Sampler. Verschoben statt geloescht: die Zahlen bleiben nachvollziehbar,
+    stehen aber nicht mehr im Weg. Die erzeugte README bleibt liegen.
+    """
+    import shutil
+
+    from provenance import code_fingerprint
+
+    files = [p for p in config.RESULTS_DIR.glob("*.csv")]
+    if not files:
+        return None
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    target = config.RESULTS_DIR / "deprecated" / f"{stamp}__{code_fingerprint()}"
+    target.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        shutil.move(str(f), target / f.name)
+    if reason:
+        (target / "GRUND.txt").write_text(reason + "\n")
+    return target
+
+
 def load_results(graph_name: str | None = None, kind: str = "estimates",
                  seed: int | None = None, start=None) -> pd.DataFrame:
     """Ergebnisse laden; `seed=None` laedt alle vorhandenen Seeds.
@@ -107,7 +195,7 @@ def load_results(graph_name: str | None = None, kind: str = "estimates",
     """
     frames = []
     want_start = None if start is None else config.start_slug(start)
-    for path in sorted(config.RESULTS_DIR.glob("*.csv")):
+    for path in sorted(config.RESULTS_DIR.glob("*.csv")):   # ohne deprecated/
         g, s, st, k = parse_stem(path.stem)
         if k != kind or (graph_name is not None and g != graph_name):
             continue
@@ -156,7 +244,14 @@ def conditions_available(df: pd.DataFrame) -> list[tuple]:
     if "start_node" not in df.columns:
         return [(s, None) for s in seeds_available(df)]
     pairs = df[["seed", "start_node"]].drop_duplicates()
-    return sorted((int(s), n) for s, n in pairs.itertuples(index=False))
+    items = [(int(s), n) for s, n in pairs.itertuples(index=False)]
+    # start_node ist je nach Graph int (Original-Knoten-IDs, z.B. Slashdot0811)
+    # oder str (GPT-Basen, z.B. "Vannevar Bush") -- beim Laden mehrerer Graphen
+    # zugleich landen beide Typen im selben Frame, und sorted() auf int/str
+    # gemischt wirft TypeError. str(n) macht den Sortierschluessel einheitlich;
+    # die Paare selbst bleiben unveraendert, nur ihre Reihenfolge aendert sich
+    # ggf. zwischen numerisch und lexikografisch sortierten start_node-Werten.
+    return sorted(items, key=lambda t: (t[0], str(t[1])))
 
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:

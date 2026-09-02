@@ -23,6 +23,7 @@ Schnittstelle:
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -216,6 +217,7 @@ def _results_readme() -> str:
         "| `n_random_node`, `n_neighbors` | Zugriffe je Art zum vollen Preis |",
         "| `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |",
         "| `stopped_by` | warum der Lauf endete -- normal `budget` |",
+        "| `code` | Fingerabdruck des Codes, der die Zeile erzeugt hat |",
         "| `seed` | Zufallsstrom des Laufs (siehe Dateiname) |",
         "| `start_node` | Einstiegsknoten des Crawls (`config.SEED_NODES`) |",
         "| `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |",
@@ -236,6 +238,13 @@ def _results_readme() -> str:
         "gepaart -- fuer den Vergleich *zwischen* ihnen ein Gewinn, aber sie",
         "sind keine unabhaengigen Beobachtungen. `seconds` steht auch hier nur",
         "beim ersten Estimator der Gruppe.",
+        "",
+        "Ergebnisse werden **angehaengt, nicht ueberschrieben**: ein zweiter",
+        "Aufruf rechnet nur, was noch fehlt. Stehen in einer Datei mehrere",
+        "Werte in `code`, stammen ihre Zeilen aus verschiedenen Codeversionen --",
+        "das ist erlaubt, solange die Aenderung den Verlauf nicht beruehrt hat.",
+        "War sie es doch, gehoeren die alten Zeilen mit `--deprecate` beiseite",
+        "(nach `data/results/deprecated/<Zeit>__<Fingerabdruck>/`).",
         "",
         "Steht in `stopped_by` etwas anderes als `budget`, hat nicht das",
         "Kostenmodell den Lauf beendet -- die Zahlen sind dann mit Vorsicht zu",
@@ -263,6 +272,12 @@ def _plots_readme() -> str:
     for path in sorted(config.PLOTS_DIR.glob("*.png")):
         graph, seed, start, slug = results_io.parse_stem(path.stem)
         label = config.graph_label(graph)
+        # Bilder ueberschreiben nichts, Wiederholungen heissen "...-2", "...-3"
+        # (config.unique_path). Fuer die Zuordnung zaehlt der Name ohne Nummer.
+        m = re.match(r"^(?P<slug>.+)-(?P<copy>\d+)$", slug)
+        copy = int(m.group("copy")) if m else 1
+        if m:
+            slug = m.group("slug")
         parts.append(f"### `{path.name}`")
         parts.append("")
         if slug in specs:
@@ -271,6 +286,7 @@ def _plots_readme() -> str:
                 f"{title}",
                 "",
                 f"- Graph: **{label}** (`{graph}`)",
+                *([] if copy == 1 else [f"- {copy}. Fassung derselben Grafik"]),
                 f"- Seed: {seed}",
                 f"- Einstieg: {start or 'Default (config.SEED_NODES)'}",
                 f"- Views: {', '.join(views)}",

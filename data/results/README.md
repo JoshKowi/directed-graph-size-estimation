@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-01 15:54 |
+| Daten vom | 2026-09-02 13:18 |
 |---|---|
-| Code-Fingerabdruck | `f03e6bbab1a3` |
+| Code-Fingerabdruck | `f65066705e5a` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -27,22 +27,22 @@ reproduzierbar) -- diese Datei haelt fest, woher sie stammen.
 
 ### `Slashdot0811__estimates.csv`
 
-Schaetzungen fuer **Slashdot (Nov 2008)** (`Slashdot0811`), 240 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **Slashdot (Nov 2008)** (`Slashdot0811`), 1 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: undirected
-- Budgets: 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 (relativ zu |V| = 77 360)
-- Laeufe je Punkt: 10
-- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
+- Views: directed
+- Budgets: 0.001 (relativ zu |V| = 77 360)
+- Laeufe je Punkt: 1
+- Estimators: capture-recapture__uniform
 - Seed: 42
 - Einstieg: 3285
-- Abbruchgrund: {'budget': 240}
+- Abbruchgrund: {'budget': 1}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs Slashdot0811 \
-    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
-    --views undirected
+    --estimators capture-recapture__uniform \
+    --views directed
 ```
 
 ### `Slashdot0811__view_comparison.csv`
@@ -55,23 +55,31 @@ Besuchshaeufigkeit je Original-Knotenname fuer **Slashdot (Nov 2008)** (Seed 42)
 
 ### `gpt4_io__estimates.csv`
 
-Schaetzungen fuer **GPT-4 knowledge graph (instances only)** (`gpt4_io`), 200 Zeilen (= Estimator x View x Budget x Lauf).
+Schaetzungen fuer **GPT-4 knowledge graph (instances only)** (`gpt4_io`), 100 Zeilen (= Estimator x View x Budget x Lauf).
 
-- Views: undirected
+- Views: directed, undirected
 - Budgets: 0.001, 0.005, 0.01, 0.05, 0.1 (relativ zu |V| = 6 492 586)
 - Laeufe je Punkt: 10
-- Estimators: rw_plain__restart__none, rw_plain__restart__shifted, rw_plain__restart__simple, uniform_collision
+- Estimators: capture-recapture__uniform
 - Seed: 42
 - Einstieg: Vannevar Bush
-- Abbruchgrund: {'budget': 200}
+- Abbruchgrund: {'budget': 100}
 
 Erzeugt mit:
 
 ```bash
 python run_experiment.py --graphs gpt4_io \
-    --estimators rw_plain__restart__none rw_plain__restart__shifted rw_plain__restart__simple uniform_collision \
-    --views undirected
+    --estimators capture-recapture__uniform \
+    --views directed undirected
 ```
+
+### `gpt4_io__view_comparison.csv`
+
+Gepaarter Vergleich der Kantensichten fuer **GPT-4 knowledge graph (instances only)** (`results.compare_views`). Entsteht beim Plotten.
+
+### `gpt4_io__visits.csv`
+
+Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4 knowledge graph (instances only)** (Seed 42), 9 065 716 Zeilen. Faellt beim selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet sie aus).
 
 ### `gpt4o_adj_from_dataset__estimates.csv`
 
@@ -140,6 +148,7 @@ Besuchshaeufigkeit je Original-Knotenname fuer **GPT-4o knowledge graph (instanc
 | `n_random_node`, `n_neighbors` | Zugriffe je Art zum vollen Preis |
 | `unique_nodes_used` | verschiedene beruehrte Knoten (nur Statistik) |
 | `stopped_by` | warum der Lauf endete -- normal `budget` |
+| `code` | Fingerabdruck des Codes, der die Zeile erzeugt hat |
 | `seed` | Zufallsstrom des Laufs (siehe Dateiname) |
 | `start_node` | Einstiegsknoten des Crawls (`config.SEED_NODES`) |
 | `nested` | Budget aus einem gemeinsamen Lauf abgelesen (s.u.) |
@@ -160,6 +169,13 @@ reine Nachbearbeitung derselben Trajektorie. Ihre Zeilen sind damit
 gepaart -- fuer den Vergleich *zwischen* ihnen ein Gewinn, aber sie
 sind keine unabhaengigen Beobachtungen. `seconds` steht auch hier nur
 beim ersten Estimator der Gruppe.
+
+Ergebnisse werden **angehaengt, nicht ueberschrieben**: ein zweiter
+Aufruf rechnet nur, was noch fehlt. Stehen in einer Datei mehrere
+Werte in `code`, stammen ihre Zeilen aus verschiedenen Codeversionen --
+das ist erlaubt, solange die Aenderung den Verlauf nicht beruehrt hat.
+War sie es doch, gehoeren die alten Zeilen mit `--deprecate` beiseite
+(nach `data/results/deprecated/<Zeit>__<Fingerabdruck>/`).
 
 Steht in `stopped_by` etwas anderes als `budget`, hat nicht das
 Kostenmodell den Lauf beendet -- die Zahlen sind dann mit Vorsicht zu

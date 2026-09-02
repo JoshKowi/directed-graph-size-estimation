@@ -289,6 +289,55 @@ gepaarten Verhaeltnisses (> 1: in dieser Sicht wird hoeher geschaetzt).
 Speicher: `undirected` und `reverse` bauen einmalig eine zweite Adjazenz auf.
 Bei den grossen Graphen ggf. je View einen eigenen Lauf starten.
 
+## Nichts wird ueberschrieben
+
+**Ergebnisse werden angehaengt.** Beim Start prueft `run_experiment.py`, was in
+der Zieldatei schon steht, und rechnet nur das Fehlende. Ein Lauf ist durch
+`(view, estimator, budget_rel, run)` bestimmt -- innerhalb einer Datei, die
+ohnehin nach Graph, Seed und Einstiegsknoten getrennt ist.
+
+```bash
+python run_experiment.py --graphs slashdot --estimators uniform-collision
+# -> rechnet und schreibt
+
+python run_experiment.py --graphs slashdot --estimators uniform-collision
+# [Slashdot0811] alles schon gerechnet -- data/results/Slashdot0811__estimates.csv
+# [Slashdot0811] nichts zu tun (mit --replace neu rechnen)
+
+python run_experiment.py --graphs slashdot \
+    --estimators uniform-collision wis-katzir__rw-restart
+# [Slashdot0811] 3 von 12 Schaetzungen liegen schon vor, gerechnet werden 9
+```
+
+Das gilt bis in den Runner hinein: Pakete, die nur bekannte Zeilen liefern
+wuerden, werden gar nicht erst gestartet; bei gemischten Paketen (geteilte
+Walks, genestete Budgets) faellt die bekannte Zeile nach der Rechnung weg.
+`--replace` erzwingt das Neurechnen.
+
+**Bilder auch nicht.** Existiert der Dateiname schon, entsteht `...-2.png`,
+`...-3.png` (siehe `config.unique_path`). Zwei Laeufe mit verschiedenen
+Parametern liegen damit nebeneinander statt uebereinander.
+
+### Wenn sich der Verlauf aendert
+
+Aenderungen am Graphaufbau, am Kostenmodell oder am Sampler machen alte Zeilen
+unvergleichbar -- anhaengen waere dann falsch. Dafuer:
+
+```bash
+python run_experiment.py --graphs slashdot --deprecate "Schlingen entfernt"
+```
+
+Das schiebt alle vorhandenen CSVs nach
+`data/results/deprecated/<Zeit>__<Code-Fingerabdruck>/` (mit `GRUND.txt`) und
+faengt neu an. Verschoben statt geloescht: die Zahlen bleiben nachvollziehbar,
+stehen aber nicht mehr im Weg.
+
+Als Kontrolle traegt jede Zeile in der Spalte `code` den Fingerabdruck der
+Codeversion, die sie erzeugt hat (SHA-256 ueber alle `.py` unter `Code/`).
+Stehen in einer Datei mehrere Werte, stammen ihre Zeilen aus verschiedenen
+Codeversionen -- unbedenklich, solange die Aenderung den Verlauf nicht
+beruehrt hat, und ein Hinweis, falls doch.
+
 ## Mehrere Durchlaeufe je Graph: `--seed`
 
 Der Seed bestimmt den kompletten Zufallsstrom eines Laufs. Ein zweiter Lauf mit

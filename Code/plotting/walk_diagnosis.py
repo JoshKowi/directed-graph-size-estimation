@@ -174,8 +174,9 @@ def plot_diagnosis(results: list[dict], path: Path | None = None) -> Path:
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
         from experiment.results import seed_tag
-        path = (config.PLOTS_DIR /
-                f"{d0['graph']}__{seed_tag(d0.get('seed'))}walk_diagnosis.png")
+        path = config.unique_path(
+            config.PLOTS_DIR
+            / f"{d0['graph']}__{seed_tag(d0.get('seed'))}walk_diagnosis.png")
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return path

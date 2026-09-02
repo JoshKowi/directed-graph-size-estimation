@@ -154,6 +154,6 @@ def plot_ranges(summary, graph_name: str | None = None, path: Path | None = None
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = config.PLOTS_DIR / f"{graph_name}__ranges.png"
+        path = config.unique_path(config.PLOTS_DIR / f"{graph_name}__ranges.png")
     fig.savefig(path, dpi=160, facecolor=SURFACE)
     return fig

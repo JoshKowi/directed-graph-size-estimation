@@ -9,6 +9,7 @@ Beispiele:
     python plot_results.py --match uniform rw-plain__backtrack
     python plot_results.py --estimators uniform-collision__weighted rw-plain__restart__none
     python plot_results.py --graphs Slashdot0811 --seed 7
+    python plot_results.py --graphs gpt4_io --views undirected
 
 Je Graph *und* Seed entsteht ein eigenes Bild: verschiedene Seeds sind
 verschiedene Durchlaeufe des Experiments und gehoeren nicht in dieselbe
@@ -21,6 +22,7 @@ import argparse
 
 import config
 from experiment import results as results_io
+from graphs.views import VIEWS
 from plotting.ranges import plot_ranges
 
 
@@ -30,6 +32,8 @@ def main() -> None:
     p.add_argument("--estimators", nargs="+", default=None, help="exakte Estimator-Namen")
     p.add_argument("--match", nargs="+", default=None,
                    help="Estimators, deren Name einen dieser Teilstrings enthaelt")
+    p.add_argument("--views", nargs="+", default=None, choices=sorted(VIEWS),
+                   help="nur diese Kantensichten plotten (Default: alle vorhandenen)")
     p.add_argument("--seed", type=int, default=None,
                    help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
     p.add_argument("--start-node", default=None,
@@ -45,6 +49,8 @@ def main() -> None:
         df = df[df["estimator"].isin(args.estimators)]
     if args.match:
         df = df[df["estimator"].str.contains("|".join(args.match), regex=True)]
+    if args.views:
+        df = df[df["view"].isin(args.views)]
     if df.empty:
         print("Auswahl trifft auf keine Zeile zu.")
         return
@@ -67,7 +73,8 @@ def main() -> None:
             if rows.empty:      # diese Bedingung gibt es fuer den Graphen nicht
                 continue
             tag = results_io.seed_tag(seed) + results_io.start_tag(name, start)
-            path = config.PLOTS_DIR / f"{name}__{tag}ranges.png"
+            path = config.unique_path(
+                config.PLOTS_DIR / f"{name}__{tag}ranges.png")
             plot_ranges(rows, graph_name=name, path=path, note=note)
             print("  ->", path)
             print("  ->", results_io.save_results(

@@ -4,6 +4,7 @@ Schnittstelle:
     ROOT, ADJACENCIES_DIR, RESULTS_DIR, PLOTS_DIR
     DEFAULT_BUDGETS, DEFAULT_N_RUNS, DEFAULT_SEED, DEFAULT_BUDGET_METRIC, DEFAULT_VIEWS
     GRAPH_LABELS, graph_label(name), GRAPH_ALIASES, resolve_graph(name)
+    unique_path(path)
     SEED_NODES, seed_nodes(graph), start_slug(node)
 """
 
@@ -38,6 +39,23 @@ GRAPH_LABELS = {
     "gpt4o_io": "GPT-4o knowledge graph (instances only)",
     "wiki-topcats": "Wikipedia (top categories)",
 }
+
+
+def unique_path(path):
+    """Freier Dateiname: `x.png`, sonst `x-2.png`, `x-3.png`, ...
+
+    Erzeugte Bilder und Ergebnisse ueberschreiben nichts mehr. Ein zweiter
+    Lauf mit anderen Parametern soll den ersten nicht stillschweigend
+    ersetzen -- was einmal auf der Platte liegt, bleibt liegen, und was
+    verglichen werden soll, liegt nebeneinander.
+    """
+    if not path.exists():
+        return path
+    for i in range(2, 10000):
+        candidate = path.with_name(f"{path.stem}-{i}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"Zu viele Varianten von {path}")
 
 
 def graph_label(name: str) -> str:

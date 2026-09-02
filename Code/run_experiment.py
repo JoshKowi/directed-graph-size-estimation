@@ -27,6 +27,12 @@ Walk teilen und nur die Auswertung variieren -- gedacht fuer Vergleiche von
 Thinning, Safety Margin oder mit/ohne Gewichte, die alle auf derselben
 Trajektorie sitzen sollten. Siehe check_shared.py.
 
+Ergebnisse werden **angehaengt, nicht ueberschrieben**. Was schon gerechnet
+wurde, laeuft nicht noch einmal; ein Aufruf mit zusaetzlichen Estimators oder
+Budgets ergaenzt die Datei nur um das Fehlende. `--replace` erzwingt das
+Neurechnen, `--deprecate` schiebt alles Vorhandene beiseite (fuer Aenderungen,
+die den Verlauf aendern).
+
 `--start-node` waehlt den Einstiegsknoten des Crawls (Default: der erste aus
 config.SEED_NODES, bei den GPT-Basen "Vannevar Bush"); `--start-node all`
 rechnet alle hinterlegten nacheinander. Jeder Einstieg landet in eigenen
@@ -69,6 +75,15 @@ def main() -> None:
     p.add_argument("--jobs", type=int, default=config.DEFAULT_N_JOBS,
                    help="Parallele Prozesse je View (1 = sequentiell)")
     p.add_argument("--no-visits", action="store_true", help="Besuchsstatistik nicht speichern")
+    p.add_argument("--replace", action="store_true",
+                   help="schon vorhandene Laeufe neu rechnen und ersetzen, statt "
+                        "sie zu ueberspringen")
+    p.add_argument("--deprecate", metavar="GRUND", nargs="?", const="",
+                   help="alle vorhandenen Ergebnisse vorher nach "
+                        "data/results/deprecated/<Zeit>__<Fingerabdruck>/ "
+                        "verschieben. Fuer Aenderungen, die den Verlauf aendern "
+                        "(Graphaufbau, Kostenmodell, Sampler) -- danach schreibt "
+                        "der Lauf neue Dateien.")
     p.add_argument("--start-node", default=None, metavar="NAME",
                    help="Einstiegsknoten des Crawls. Default: der erste Eintrag "
                         "aus config.SEED_NODES (bei den GPT-Basen 'Vannevar "
@@ -101,6 +116,12 @@ def main() -> None:
     graph_names = ([config.resolve_graph(g) for g in args.graphs]
                    if args.graphs else loader.available_graphs())
     ests = estimators.build_all(args.estimators)
+    code = provenance.code_fingerprint()
+
+    if args.deprecate is not None:
+        moved = results_io.deprecate(args.deprecate or None)
+        print(f"  -> vorhandene Ergebnisse nach {moved}" if moved
+              else "  -> keine Ergebnisse zum Verschieben da", flush=True)
 
     for name in graph_names:
         t0 = time.perf_counter()
@@ -146,6 +167,29 @@ def main() -> None:
               + (f" x {len(starts)} Einstiegsknoten" if len(starts) > 1 else ""),
               flush=True)
 
+        # Was schon in der Zieldatei steht, wird nicht neu gerechnet. Getrennt
+        # je Einstiegsknoten, weil jeder in eine eigene Datei schreibt.
+        skip: set = set()
+        if not args.replace:
+            for start in starts:
+                have = results_io.load_one(name, seed=args.seed, start=start)
+                skip |= results_io.run_keys(have)
+        planned = {(v, e.name, b, r)
+                   for v in args.views for e in ests
+                   for b in budgets for r in range(args.runs)}
+        todo = planned - skip
+        if not todo:
+            for start in starts:
+                path = results_io._path(name, "estimates", args.seed, start)
+                if path.exists():
+                    print(f"[{name}] alles schon gerechnet -- {path}", flush=True)
+            print(f"[{name}] nichts zu tun (mit --replace neu rechnen)", flush=True)
+            loader.clear_cache()
+            continue
+        if skip & planned:
+            print(f"[{name}] {len(skip & planned)} von {len(planned)} Schaetzungen "
+                  f"liegen schon vor, gerechnet werden {len(todo)}", flush=True)
+
         df, visits = run_graph(
             graph,
             ests,
@@ -158,19 +202,24 @@ def main() -> None:
             nested_budgets=args.checkpoint_budgets,
             share_walks=args.share_walks,
             start_nodes=starts,
+            skip_keys=set() if args.replace else skip,
+            code=code,
             log=lambda m: print(m, flush=True),
         )
         # Je Einstiegsknoten eine eigene Datei: verschiedene Einstiege sind
         # verschiedene Bedingungen und gehoeren nicht in dieselbe Spanne.
         for start in starts:
             part = df[df["start_node"] == start] if start is not None else df
-            print("  ->", results_io.save_results(part, name, seed=args.seed,
-                                                  start=start))
+            if part.empty:
+                continue
+            save = (results_io.save_results if args.replace
+                    else results_io.append_results)
+            print("  ->", save(part, name, seed=args.seed, start=start))
             if visits is not None:
                 vpart = (visits[visits["start_node"] == start]
                          if start is not None else visits)
-                print("  ->", results_io.save_results(vpart, name, kind="visits",
-                                                      seed=args.seed, start=start))
+                print("  ->", save(vpart, name, kind="visits",
+                                   seed=args.seed, start=start))
         loader.clear_cache()
 
     # Ordner-README aktuell halten -- sonst steht sie nach dem naechsten Lauf falsch da

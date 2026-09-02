@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-01 15:54 |
+| Daten vom | 2026-09-02 13:18 |
 |---|---|
-| Code-Fingerabdruck | `f03e6bbab1a3` |
+| Code-Fingerabdruck | `f65066705e5a` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -39,6 +39,10 @@ UIS collision counting with a random walk -- dead-end strategies (directed)
 - Estimators: uniform-collision, rw-plain__restart__none, rw-plain__backtrack__none, rw-plain__history__none
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
+
+### `Slashdot0811__ranges.png`
+
+Uebersichtsraster fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
 
 ### `Slashdot0811__thinning-without-weights.png`
 
@@ -112,13 +116,29 @@ Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 
 
 Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
 
+### `gpt4_io__ranges-2.png`
+
+Uebersichtsraster fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/ranges.py`).
+
+### `gpt4_io__ranges.png`
+
+Uebersichtsraster fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/ranges.py`).
+
 ### `gpt4_io__thinning-without-weights.png`
 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
+### `gpt4_io__walk_diagnosis.png`
+
+Diagnose eines Random Walks auf **GPT-4 knowledge graph (instances only)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph gpt4_io --views directed undirected` (`Code/diagnose_walk.py`).
+
 ### `gpt4o_adj_from_dataset__ranges.png`
 
 Uebersichtsraster fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
+
+### `gpt4o_io__ranges.png`
+
+Uebersichtsraster fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/ranges.py`).
 
 ### `gpt4o_io__thinning-without-weights.png`
 

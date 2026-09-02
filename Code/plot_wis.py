@@ -116,7 +116,9 @@ def main() -> None:
                     print(f"  -- {slug} uebersprungen (Seed {seed}{tag and ', ' + str(start)}: nur "
                           f"{sorted(have)} in {views} vorhanden)")
                     continue
-                path = config.PLOTS_DIR / f"{graph}__{tag}{slug}.png"
+                # nichts ueberschreiben: bei Bedarf x-2.png, x-3.png, ...
+                path = config.unique_path(
+                    config.PLOTS_DIR / f"{graph}__{tag}{slug}.png")
                 plot_comparison(summary, graph, ests, views,
                                 f"{config.graph_label(graph)}: {title}",
                                 path=path, colors=COLORS, note=note)

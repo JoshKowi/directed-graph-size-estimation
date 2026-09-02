@@ -114,7 +114,7 @@ def plot_comparison(
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-        path = config.PLOTS_DIR / f"{graph_name}__comparison.png"
+        path = config.unique_path(config.PLOTS_DIR / f"{graph_name}__comparison.png")
     fig.savefig(path, dpi=160, facecolor=SURFACE)
     plt.close(fig)
     return fig
