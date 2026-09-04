@@ -37,9 +37,10 @@ from functools import partial
 import config
 from estimators.base import Category, Estimator
 from estimators.methods import (capture_recapture, deg_weighted_independent,
-                                random_walk_collision, short_walk_independent,
-                                uniform_collision)
+                                durw, random_walk_collision,
+                                short_walk_independent, uniform_collision)
 from sampling.dead_ends import DEAD_ENDS
+from sampling.jumps import JUMPS
 from sampling.thinning import THINNINGS
 
 
@@ -162,6 +163,54 @@ REGISTRY["rw-weighted__restart__none"] = Entry(
 )
 
 del _dead_end, _thinning, _cf
+
+# -- DURW: Random Walk mit aufgebautem G_u und gradproportionalem Sprung ---
+# Dieselben Formeln, Thinnings und Capture-Recapture-Varianten wie beim
+# einfachen Random Walk, nur mit einem Sampler, dessen Stationaerverteilung
+# auch auf den gerichteten Views bekannt ist (sampling.durw). An der Stelle
+# von `dead_end` steht die Sprungart -- eine Sackgassen-Strategie braucht DURW
+# nicht.
+#
+# Die Kategorie haengt daran, wie der Sprung beschafft wird, nicht am Sampler:
+# `uniform` zieht gleichverteilt aus V und setzt damit dieselbe Kenntnis der
+# Knotenmenge voraus, die auch `uniform-collision` zur COMPARISON macht. Eine
+# spaeter hinzukommende Sprungart, die ihr Ziel aus externen Daten simuliert,
+# wird hier auf REALIZABLE gesetzt -- am Verfahren aendert sich dadurch nichts.
+_JUMP_CATEGORY = {"uniform": Category.COMPARISON}
+
+for _jump in JUMPS:
+    _cat = _JUMP_CATEGORY[_jump]
+    for _thinning in THINNINGS:
+        REGISTRY[f"durw-plain__{_jump}__{_thinning}"] = Entry(
+            partial(durw.build, jump=_jump, thinning=_thinning,
+                    formula="uis-collision"), _cat)
+        # gradkorrigiert; ohne Thinning heisst der Eintrag nur "wis-durw__<jump>",
+        # analog zu wis-katzir__rw-<dead_end>
+        _name = (f"wis-durw__{_jump}" if _thinning == "none"
+                 else f"wis-durw__{_jump}__{_thinning}")
+        REGISTRY[_name] = Entry(
+            partial(durw.build, jump=_jump, thinning=_thinning,
+                    formula="wis-col-katzir"), _cat)
+    # Safety Margin: wie oben immer mit thinning="none".
+    for _tag, _f in (("durw-plain", "uis-collision"), ("wis-durw", "wis-col-katzir")):
+        REGISTRY[f"{_tag}__{_jump}__margin"] = Entry(
+            partial(durw.build, jump=_jump, thinning="none",
+                    margin=config.SAFETY_MARGIN, formula=_f), _cat)
+    # Capture-Recapture auf DURW-Faengen -- jeder Fang baut sein eigenes G_u.
+    REGISTRY[f"capture-recapture__durw-{_jump}"] = Entry(
+        partial(capture_recapture.build, sampler="durw", jump=_jump), _cat)
+    REGISTRY[f"capture-recapture__durw-{_jump}__chapman"] = Entry(
+        partial(capture_recapture.build, sampler="durw", jump=_jump,
+                formula="chapman"), _cat)
+    REGISTRY[f"capture-recapture__durw-{_jump}__schnabel"] = Entry(
+        partial(capture_recapture.build, sampler="durw", jump=_jump,
+                formula="schnabel", n_captures=config.DEFAULT_CAPTURES), _cat)
+    for _cf in ("cross", "cross-wis"):
+        REGISTRY[f"capture-recapture__durw-{_jump}__{_cf}"] = Entry(
+            partial(capture_recapture.build, sampler="durw", jump=_jump,
+                    formula=_cf), _cat)
+
+del _jump, _cat, _thinning, _name, _tag, _f, _cf
 
 
 def register(name: str, factory: Callable[[], Estimator], category: Category) -> None:

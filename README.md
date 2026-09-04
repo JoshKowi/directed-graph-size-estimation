@@ -245,7 +245,9 @@ Code/
     local_access.py       nur Nachbarschaftsabfragen ab einem Seed
   sampling/             wie das Oracle genutzt wird
     samplers.py           UniformSampler, RandomWalkSampler
+    durw.py               DURW: Random Walk mit aufgebautem G_u und Sprung
     dead_ends.py          Sackgassen: restart | backtrack | history
+    jumps.py              DURW-Sprungarten: uniform
     thinning.py           Dependency Reduction: none | simple | shifted
   weighting/            Korrektur der Sampling-Verzerrung (w_i ~ 1/pi(u_i))
   estimators/
@@ -287,6 +289,7 @@ Entscheidet ueber die Kategorie: globaler Zugriff setzt Kenntnis von V voraus
 | `DegWeightedIndependentOracle` | `global_access` | wie oben, aber gewichtet gezogen | pi(v) ~ deg_out(v), unabhaengig | Vergleich |
 | `ShortWalkIndependentOracle` | `global_access` | Endknoten eines Walks fester Laenge (`steps`) | Walk-Verzerrung, aber unabhaengig | Vergleich |
 | `CrawlOracle` | `local_access` | `seed_nodes()`, `neighbors()` | was der Walk erreicht | real umsetzbar |
+| `JumpCrawlOracle` | `local_access` | wie `CrawlOracle` + `random_node()` | was der Walk erreicht | haengt an der Sprungart (s.u.) |
 
 ### 2. Sampler -- wie daraus eine Stichprobe wird
 
@@ -294,6 +297,7 @@ Entscheidet ueber die Kategorie: globaler Zugriff setzt Kenntnis von V voraus
 |---|---|---|
 | `UniformSampler` | `n_walks` | unabhaengige Ziehungen; `n_walks` > 1 teilt sie in ebenso viele Faenge (Budget gleichmaessig) |
 | `RandomWalkSampler` | `dead_end`, `n_seeds`, `n_walks`, `burn_in`, `restart_prob`, `allow_self_loops` | volle Trajektorie eines (oder `n_walks` nacheinander laufender) Random Walks |
+| `DurwSampler` | `jump`, `jump_weight`, `n_seeds`, `n_walks`, `burn_in` | wie oben, aber DURW: baut waehrend des Laufs ein ungerichtetes G_u auf und springt gradproportional |
 
 ### 3. Sackgassen-Strategie -- nur fuer den Random Walk
 
@@ -304,6 +308,55 @@ Wirkt ausschliesslich auf gerichteten Views (s. "Random-Walk-Varianten").
 | `restart` | zurueck zum Startknoten |
 | `backtrack` | Schritte zurueck, bis ein Vorgaenger eine andere Abzweigung hat |
 | `history` | Sprung auf einen zufaelligen bereits besuchten Knoten |
+
+### 3b. DURW -- Random Walk, dessen Verteilung auch gerichtet bekannt ist
+
+Der einfache Random Walk laeuft auf den gerichteten Views auf einem Graphen,
+auf dem er gar nicht laufen duerfte: pi(u) ~ deg(u) gilt nur ungerichtet, und
+jede Sackgassen-Strategie verschiebt die Verteilung noch einmal. DURW (Ribeiro
+& Towsley, `sampling/durw.py`) loest das mit zwei Zutaten:
+
+1. **Rueckwaerts begehbare Kanten.** Jede beobachtete Ausgangskante u -> v wird
+   gemerkt; landet der Walk spaeter auf v, darf er sie rueckwaerts nehmen.
+   Aber nur, solange v noch *unbesucht* ist -- Kanten auf bereits besuchte
+   Knoten werden verworfen. Damit steht der Grad eines Knotens im aufgebauten
+   ungerichteten Graphen G_u fest, sobald er zum ersten Mal besucht wird, und
+   aendert sich nie wieder. Genau das braucht die Gewichtung: sonst hinge sie
+   an Kanten, die der Walk erst spaeter sieht.
+2. **Gradproportionale Spruenge.** Mit Wahrscheinlichkeit `w / (w + deg_Gu(v))`
+   springt der Walk auf einen zufaellig gezogenen Knoten. Auf dem so
+   entstehenden gewichteten Graphen ist
+
+       pi(v) = (w + deg_Gu(v)) / (vol(V) + w|V|)
+
+   -- bis auf die Normierung bekannt, sobald v besucht ist; die kuerzt der
+   Kollisionsschaetzer heraus. `weighting.DurwWeighting` setzt das als
+   `1/(w + deg_Gu)` ein (nicht `InverseDegreeWeighting`, die gehoert zum
+   einfachen Random Walk).
+
+Zwei Dinge fallen dadurch weg: eine **Sackgassen-Strategie** (bei `deg_Gu = 0`
+ist die Sprungwahrscheinlichkeit 1 -- Sackgassen sind der Grenzfall der
+Sprungregel, kein Sonderfall) und `allow_self_loops` (Schlingen sind beim
+Laden schon weg). `Sample.degree` traegt bei DURW den Grad in G_u, nicht den
+Ausgangsgrad.
+
+Bei `n_walks` > 1 (Capture-Recapture) baut jeder Fang sein **eigenes** G_u auf,
+sonst waeren die Faenge ueber die geteilte Historie abhaengig.
+
+| `jump` | Sprungziel | braucht | Kategorie |
+|---|---|---|---|
+| `uniform` | gleichverteilt aus V | `JumpCrawlOracle.random_node()` | Vergleich |
+
+Die Kategorie haengt an der Sprungart, nicht am Verfahren: `uniform` setzt
+dieselbe Kenntnis von V voraus, die auch `uniform-collision` zum Vergleich
+macht. Vergeben wird sie in `_JUMP_CATEGORY` (`estimators/__init__.py`) -- dort
+kommt eine Sprungart, die ihr Ziel aus externen Daten simuliert, als real
+umsetzbar hinein, ohne dass sich am Sampler etwas aendert.
+
+Das Sprunggewicht `w` (`config.DURW_JUMP_WEIGHT`, Default 1.0) steuert den
+Handel: groesseres w heisst haeufiger springen -- weniger Autokorrelation und
+bessere Abdeckung, dafuer geht mehr Budget in Spruenge
+(`COST_RANDOM_NODE`) statt in Schritte (`COST_CACHE_HIT` beim Wiederbesuch).
 
 ### 4. Thinning -- aus der Trajektorie werden Sample-Sets
 
@@ -371,9 +424,12 @@ die Namen:
 | `rw-weighted__restart__none` | Crawl | RandomWalk | none | `wis-col-katzir` |
 | `capture-recapture__<dead_end>[__<formel>]` | Crawl | RandomWalk(`n_walks`) | by-walk | LP / chapman / schnabel / cross / cross-wis |
 | `capture-recapture__uniform[__<formel>]` | Uniform | Uniform(`n_walks`) | by-walk | dieselben fuenf |
+| `durw-plain__<jump>__<none\|simple\|shifted\|margin[N]>` | JumpCrawl | DURW | alle drei (+ Margin) | `uis-collision` |
+| `wis-durw__<jump>[__<simple\|shifted\|margin[N]>]` | JumpCrawl | DURW | alle drei (+ Margin) | `wis-col-katzir` |
+| `capture-recapture__durw-<jump>[__<formel>]` | JumpCrawl | DURW(`n_walks`) | by-walk | dieselben fuenf |
 
 Das Kreuzprodukt laeuft ueber `<dead_end>` ∈ {`restart`, `backtrack`,
-`history`}. Zwei Zahlen lassen sich im Namen ueberschreiben und stehen deshalb
+`history`} bzw. `<jump>` ∈ {`uniform`}. Zwei Zahlen lassen sich im Namen ueberschreiben und stehen deshalb
 nicht einzeln in der REGISTRY: `...__margin20` (Safety Margin 20) und
 `...__schnabel8` (8 Faenge statt `config.DEFAULT_CAPTURES = 4`).
 
@@ -576,6 +632,7 @@ Wer sich mit wem zusammentut, ergibt sich von selbst aus Oracle und Sampler:
 | `CrawlOracle \| random_walk_restart` | `rw-plain__restart__*`, `wis-katzir__rw-restart*`, `rw-weighted__restart__none` |
 | `UniformNodeOracle \| uniform` | `uniform-collision`, `uniform-collision__weighted` |
 | `ShortWalkIndependentOracle(steps=5) \| uniform` | `uis__walk5`, `wis-katzir__walk5` |
+| `JumpCrawlOracle \| durw_uniform` | `durw-plain__uniform__*`, `wis-durw__uniform*` |
 
 Die Gruppierung geht ueber die Formel hinweg -- mit und ohne Gewichte laufen
 auf denselben Samples. Genau das behauptet der Kommentar bei `*__walk5` in der
@@ -877,6 +934,7 @@ gar nicht erst ab (`UniformSampler(with_degree=False)`, gesetzt aus
 | Verfahren | Anfragen je Sample |
 |---|---|
 | Random Walk (`rw-*`, `capture-recapture__<dead_end>`) | 1 -- Grad faellt beim Schritt mit ab |
+| DURW (`durw-*`, `wis-durw__*`) | 1 je Schritt (Grad faellt mit ab), plus 1 (`COST_RANDOM_NODE`) je Sprung -- im Mittel `w/(w + deg_Gu)` der Schritte |
 | `*__walk5` | 1 -- die Antwort bringt die Nachbarliste mit |
 | uniformes Ziehen ohne Gradgewichtung | 1 -- nur die Ziehung |
 | uniformes Ziehen **mit** Gradgewichtung (`wis-katzir__indep`, `*__cross-wis`) | 2 -- Ziehung + Gradabfrage |

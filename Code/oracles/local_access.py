@@ -48,3 +48,24 @@ class CrawlOracle(Oracle):
 
     def degree(self, u) -> int:
         return len(self._fetch(u))
+
+
+class JumpCrawlOracle(CrawlOracle):
+    """CrawlOracle plus gleichverteilte Knotenziehung -- fuer den Zufallssprung
+    von DURW (sampling.jumps.UniformJump).
+
+    Der einzige Unterschied zum CrawlOracle ist random_node(). Damit steht
+    dieses Oracle bewusst zwischen den beiden Zugriffsmodellen: gecrawlt wird
+    weiterhin nur ueber Nachbarschaftsabfragen, aber der Sprung setzt voraus,
+    dass sich ein Knoten gleichverteilt aus V ziehen laesst. Ob das als real
+    umsetzbar gilt, haengt daran, wie der Sprung in der Anwendung beschafft
+    wird -- die Kategorie wird deshalb nicht hier, sondern in
+    estimators/__init__.py vergeben.
+
+    Ein Sprung kostet COST_RANDOM_NODE, ein Schritt COST_NEIGHBORS (bzw.
+    COST_CACHE_HIT beim Wiederbesuch): das Sprunggewicht w steuert damit
+    zugleich, wie sich das Budget auf Sprungen und Schritte verteilt.
+    """
+
+    def random_node(self):
+        return self._draw()

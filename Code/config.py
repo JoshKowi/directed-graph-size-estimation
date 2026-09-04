@@ -173,6 +173,14 @@ SAFETY_MARGIN = 10
 # Wert je Lauf ueberschreibbar.
 DEFAULT_CAPTURES = 4
 
+# Sprunggewicht w von DURW (sampling.durw): der Walk springt mit
+# Wahrscheinlichkeit w/(w + deg_Gu(v)). Groesseres w heisst haeufiger springen
+# -- weniger Autokorrelation und bessere Abdeckung, dafuer geht mehr Budget in
+# Spruenge (COST_RANDOM_NODE) statt in Schritte (COST_CACHE_HIT beim
+# Wiederbesuch). w -> 0 ergibt einen reinen Random Walk auf G_u, w -> unendlich
+# gleichverteiltes Ziehen. Ribeiro & Towsley untersuchen w zwischen 0,1 und 10.
+DURW_JUMP_WEIGHT = 1.0
+
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
