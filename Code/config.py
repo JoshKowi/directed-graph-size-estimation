@@ -78,8 +78,24 @@ GRAPH_ALIASES = {
 
 def resolve_graph(name: str) -> str:
     """Kuerzel -> Dateiname. Unbekanntes bleibt unveraendert (auch der
-    Dateiname selbst funktioniert also weiterhin)."""
-    return GRAPH_ALIASES.get(name.strip().lower(), name)
+    Dateiname selbst funktioniert also weiterhin).
+
+    `-` und `_` sind austauschbar: `gpt4o-io`, `gpt-4o-io` und `gpt4o_io`
+    meinen alle dieselbe Basis. Sonst plottet `--graphs gpt4_io gpt4o-io`
+    stillschweigend nur den ersten Graphen, weil der zweite Name auf keine
+    Ergebnisspalte trifft.
+    """
+    key = name.strip().lower()
+    if key in GRAPH_ALIASES:
+        return GRAPH_ALIASES[key]
+    flat = key.replace("-", "").replace("_", "")
+    for alias, target in GRAPH_ALIASES.items():
+        if alias.replace("-", "").replace("_", "") == flat:
+            return target
+    for target in GRAPH_LABELS:
+        if target.lower().replace("-", "").replace("_", "") == flat:
+            return target
+    return name
 
 
 # --- Feste Einstiegsknoten ---------------------------------------------

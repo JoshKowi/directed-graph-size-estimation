@@ -40,7 +40,7 @@ def build(formula: str = "wis-col-katzir", steps: int = 5) -> PipelineEstimator:
         # PipelineEstimator ruft oracle_cls(graph, rng, budget, metric) auf --
         # die Walk-Laenge kommt ueber partial dazu.
         oracle_cls=partial(ShortWalkIndependentOracle, steps=steps),
-        sampler=UniformSampler(),
+        sampler=UniformSampler(with_degree=weighting.needs_degree),
         weighting=weighting,
         formula=FORMULAS[formula](),
     )

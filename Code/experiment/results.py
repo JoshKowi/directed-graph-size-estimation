@@ -38,6 +38,7 @@ Schnittstelle:
     summarize(df) -> pd.DataFrame     (min/median/max je View x Estimator x Budget,
                                        plus erlaubtes/genutztes Budget)
     compare_views(df, reference="directed") -> pd.DataFrame
+    budget_breakdown(df) -> pd.DataFrame
 """
 
 from __future__ import annotations
@@ -118,6 +119,19 @@ def _path(graph_name: str, kind: str, seed: int | None = None, start=None) -> Pa
             f"{graph_name}__{seed_tag(seed)}{start_tag(graph_name, start)}{kind}.csv")
 
 
+def _read_csv(path: Path) -> pd.DataFrame:
+    """Wie pd.read_csv, aber eine fehlende *oder leere* Datei ergibt einen
+    leeren Frame statt eines Fehlers. Eine 0-Byte-Datei entsteht, wenn ein
+    Lauf beim Schreiben abbricht (z. B. OOM); sie darf die naechste Auswertung
+    oder den naechsten `--replace`-Lauf nicht blockieren."""
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path, low_memory=False)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
 def save_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
                  seed: int | None = None, start=None) -> Path:
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -130,8 +144,7 @@ def load_one(graph_name: str, kind: str = "estimates", seed: int | None = None,
              start=None) -> pd.DataFrame:
     """Genau die eine Datei, in die ein Lauf schreiben wuerde -- leer, wenn es
     sie noch nicht gibt."""
-    path = _path(graph_name, kind, seed, start)
-    return pd.read_csv(path) if path.exists() else pd.DataFrame()
+    return _read_csv(_path(graph_name, kind, seed, start))
 
 
 def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
@@ -144,7 +157,7 @@ def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
     """
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = _path(graph_name, kind, seed, start)
-    old = pd.read_csv(path) if path.exists() else pd.DataFrame()
+    old = _read_csv(path)
     if not old.empty and not df.empty:
         known = run_keys(old)
         if known and all(k in df.columns for k in RUN_KEYS):
@@ -152,6 +165,8 @@ def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
                     for r in df[list(RUN_KEYS)].itertuples(index=False, name=None)]
             df = df[mask]
     combined = pd.concat([old, df], ignore_index=True) if not old.empty else df
+    if "nested" in combined.columns:      # aeltere Zeilen kannten die Spalte nicht
+        combined["nested"] = combined["nested"].fillna(False).astype(bool)
     sort_by = [c for c in ("view", "start_node", "budget_rel", "estimator", "run")
                if c in combined.columns]
     if sort_by:
@@ -206,11 +221,15 @@ def load_results(graph_name: str | None = None, kind: str = "estimates",
             default = config.start_slug(known[0]) if known else None
             if (st or default) != want_start:
                 continue
-        df = pd.read_csv(path)
+        df = _read_csv(path)
+        if df.empty:                      # fehlgeschlagener Schreibvorgang (0 Byte)
+            continue
         if "seed" not in df.columns:      # CSV aus einer Version vor --seed
             df["seed"] = s
         if "nested" not in df.columns:    # ... bzw. vor --checkpoint-budgets
             df["nested"] = False
+        else:                             # gemischte Datei: leere Zellen -> False
+            df["nested"] = df["nested"].fillna(False).astype(bool)
         if "walk_group" not in df.columns:   # ... bzw. vor --share-walks
             df["walk_group"] = None
         if "start_node" not in df.columns:   # ... bzw. vor --start-node
@@ -346,3 +365,48 @@ def compare_views(df: pd.DataFrame, reference: str = "directed") -> pd.DataFrame
     out = agg.merge(ratio, on=keys + ["view"], how="left")
     return out[keys + ["view", "median_rel", "min_rel", "max_rel", "spread_rel",
                        f"ratio_vs_{reference}", "true_size"]].sort_values(keys + ["view"])
+
+
+def budget_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+    """Wohin das Budget geht -- je View, Estimator und Budget.
+
+    Zwei Verfahren mit demselben erlaubten Budget sind nur dann fair
+    verglichen, wenn sie fuer dasselbe bezahlen. `q_per_sample` sagt, was ein
+    Sample kostet, die drei `share_*`-Spalten, wofuer:
+
+        share_draw    Ziehungen aus V (COST_RANDOM_NODE), nie cachebar
+        share_fetch   erste Nachbarabfrage je Knoten (COST_NEIGHBORS)
+        share_cache   Wiederbesuche aus dem Cache (COST_CACHE_HIT)
+
+    Ein Random Walk steht bei share_fetch ~ 1: die Nachbarabfrage ist der
+    Schritt und liefert den Grad gratis mit. Uniformes Ziehen mit
+    Gradgewichtung teilt sich 50/50 auf draw und fetch -- zwei Anfragen je
+    Sample. Ohne Gradgewichtung faellt der fetch-Anteil weg (siehe
+    sampling.samplers.UniformSampler).
+
+    Die Anteile werden mit den *aktuellen* Preisen aus config.COST_* gerechnet.
+    Ob eine Zeile aus einem Lauf mit denselben Preisen stammt, sagt die Spalte
+    `code` (Fingerabdruck, siehe provenance.py).
+    """
+    keys = ["graph", "view", "estimator", "budget_rel"]
+    keys = [k for k in keys if k in df.columns]
+
+    out = (
+        df.groupby(keys, dropna=False)
+        .agg(
+            n_runs=("estimate", "size"),
+            samples=("extra_n_samples", "median"),
+            queries_used=("queries_used", "median"),
+            draws=("n_random_node", "median"),
+            fetches=("n_neighbors", "median"),
+            cached=("cached_queries", "median"),
+        )
+        .reset_index()
+    )
+    out["q_per_sample"] = out["queries_used"] / out["samples"].replace(0, float("nan"))
+    q = out["queries_used"].replace(0, float("nan"))
+    out["share_draw"] = out["draws"] * config.COST_RANDOM_NODE / q
+    out["share_fetch"] = out["fetches"] * config.COST_NEIGHBORS / q
+    out["share_cache"] = out["cached"] * config.COST_CACHE_HIT / q
+    return out[keys + ["n_runs", "samples", "queries_used", "q_per_sample",
+                       "share_draw", "share_fetch", "share_cache"]].sort_values(keys)

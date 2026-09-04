@@ -12,9 +12,11 @@ Knotenzahl |V| eines Graphen schaetzen.
 2. Ergebnisse landen in `data/results/<graph>__estimates.csv`, die
    Besuchshaeufigkeit je Original-Knotenname in `data/results/<graph>__visits.csv`.
 3. `python plot_results.py` erzeugt `data/plots/<graph>__ranges.png`
-   (Spanne min..max plus Median je Estimator und Budget; Spalte = Kategorie,
-   Zeile = Kantensicht) und `data/results/<graph>__view_comparison.csv` mit den
-   Vergleichszahlen zwischen den Sichten.
+   (Spanne min..max plus Median je Estimator und Budget; eine Spalte je
+   Kantensicht, eine Farbe je Estimator) und
+   `data/results/<graph>__view_comparison.csv` mit den Vergleichszahlen
+   zwischen den Sichten sowie `data/results/<graph>__budget_breakdown.csv`
+   mit den Kosten je Sample und ihrer Aufteilung (siehe "Kosten und Budget").
 
 Alle Skripte werden aus dem Ordner `Code/` heraus gestartet.
 
@@ -253,7 +255,7 @@ Code/
     methods/              die Verfahren selbst (ohne Kategorie-Trennung)
     __init__.py           REGISTRY -- Verfahren + Kategorie eintragen
   experiment/           Runner (Estimator x Budget x Wiederholung) + CSV-IO
-  plotting/             Farbpalette und Range-Plot
+  plotting/             Farbpalette und Vergleichs-Plot (`compare.py`)
 ```
 
 Warum ein eigener `sampling/`-Ordner neben Oracle/Weighting/Estimator: das Oracle
@@ -261,6 +263,119 @@ regelt, *was* abgefragt werden darf (und damit, ob ein Verfahren real umsetzbar
 ist), der Sampler, *wie* daraus eine Stichprobe wird. Random Walk und
 unabhaengiges Ziehen nutzen dasselbe Oracle, erzeugen aber unterschiedliche
 Verzerrungen -- die dann das Weighting korrigiert.
+
+## Bausteine der Pipeline
+
+Ein Estimator ist im Regelfall kein eigener Algorithmus, sondern eine
+Kombination austauschbarer Stufen (`estimators/pipeline.py`):
+
+```
+Oracle -> Sampler -> Thinning -> Weighting -> Formel -> Aggregation
+  was       wie      Sets aus    Verzerrung   Zahl je   ueber die
+darf man   wird       der Tra-   korrigieren   Set        Sets
+ fragen   gezogen     jektorie
+```
+
+### 1. Oracle -- was abgefragt werden darf
+
+Entscheidet ueber die Kategorie: globaler Zugriff setzt Kenntnis von V voraus
+(also genau das, was geschaetzt werden soll) und ist deshalb nur Vergleich.
+
+| Oracle | Modul | Zugriff | Verteilung der Samples | Kategorie |
+|---|---|---|---|---|
+| `UniformNodeOracle` | `global_access` | `random_node()`, `neighbors()` | gleichverteilt ueber V | Vergleich |
+| `DegWeightedIndependentOracle` | `global_access` | wie oben, aber gewichtet gezogen | pi(v) ~ deg_out(v), unabhaengig | Vergleich |
+| `ShortWalkIndependentOracle` | `global_access` | Endknoten eines Walks fester Laenge (`steps`) | Walk-Verzerrung, aber unabhaengig | Vergleich |
+| `CrawlOracle` | `local_access` | `seed_nodes()`, `neighbors()` | was der Walk erreicht | real umsetzbar |
+
+### 2. Sampler -- wie daraus eine Stichprobe wird
+
+| Sampler | Parameter | Ergebnis |
+|---|---|---|
+| `UniformSampler` | `n_walks` | unabhaengige Ziehungen; `n_walks` > 1 teilt sie in ebenso viele Faenge (Budget gleichmaessig) |
+| `RandomWalkSampler` | `dead_end`, `n_seeds`, `n_walks`, `burn_in`, `restart_prob`, `allow_self_loops` | volle Trajektorie eines (oder `n_walks` nacheinander laufender) Random Walks |
+
+### 3. Sackgassen-Strategie -- nur fuer den Random Walk
+
+Wirkt ausschliesslich auf gerichteten Views (s. "Random-Walk-Varianten").
+
+| `dead_end` | Verhalten bei 0 nutzbaren ausgehenden Kanten |
+|---|---|
+| `restart` | zurueck zum Startknoten |
+| `backtrack` | Schritte zurueck, bis ein Vorgaenger eine andere Abzweigung hat |
+| `history` | Sprung auf einen zufaelligen bereits besuchten Knoten |
+
+### 4. Thinning -- aus der Trajektorie werden Sample-Sets
+
+Reine Nachbearbeitung: der Walk ist gelaufen, die Queries sind bezahlt.
+
+| `thinning` | Sets | Zweck |
+|---|---|---|
+| `none` | 1 (die ganze Trajektorie) | nichts verwerfen |
+| `simple` | 1 (jedes `step`-te Sample) | Abstand vergroessern, verwirft `(n-1)/n` des Budgets |
+| `shifted` | `step` (Offsets 0..n-1) | wie `simple`, aber ohne Verlust: je Set eine Schaetzung |
+| `by-walk` | `n_walks` (ein Set je Fang) | fuer Capture-Recapture -- Faenge, die nicht Fortsetzung voneinander sind; nicht in `THINNINGS`, wird direkt von `methods/capture_recapture.py` gesetzt |
+
+`margin` steht in den Estimator-Namen im selben Slot, ist aber **kein**
+Thinning: es verwirft keine Samples, sondern bei der Kollisionszaehlung Paare
+mit Abstand <= m im Walk (`config.SAFETY_MARGIN = 10`).
+
+### 5. Weighting -- die Sampling-Verzerrung korrigieren
+
+Wird von den `build()`-Funktionen automatisch nach der Formel gewaehlt
+(`FORMULAS[...].weighted`).
+
+| Schema | Gewicht | Passt zu |
+|---|---|---|
+| `UniformWeighting` | `w_i = 1` | gleichverteilten Stichproben |
+| `InverseDegreeWeighting` | `w_i = 1/deg(u_i)` | Stichproben mit pi(u) ~ deg(u) (Random Walk, DWI) |
+
+### 6. Formel -- die Zahl
+
+Zwei Signaturen: `EstimationFormula` rechnet je Sample-Set (die Pipeline
+aggregiert danach), `SetsFormula` rechnet einmal ueber alle Sets gemeinsam.
+
+| `formula` | Art | Rechnung | Gewichte |
+|---|---|---|---|
+| `uis-collision` | je Set | `C(k,2) / n_col` | nein |
+| `wis-col-katzir` | je Set | gradkorrigierter Collision-Schaetzer (Katzir 2011) | ja |
+| `lincoln-petersen` | ueber Sets | `\|S1\|*\|S2\| / \|S1 ∩ S2\|`, genau 2 Faenge | nein |
+| `chapman` | ueber Sets | verzerrungskorrigierte Variante davon, genau 2 Faenge | nein |
+| `schnabel` | ueber Sets | k Faenge (Schnabel 1938), `n_captures` frei | nein |
+| `cross` | ueber Sets | Kollisionen *zwischen* den Faengen, `n_captures` frei | nein |
+| `cross-wis` | ueber Sets | dasselbe mit Gradkorrektur | ja |
+
+Alle liefern NaN ohne beobachtete Kollision; alle kennen den `margin`.
+
+### 7. Aggregation und Budget
+
+| Stufe | Werte | Default |
+|---|---|---|
+| `aggregate` | jede numpy-Funktion ueber die Einzelschaetzungen | `np.median` |
+| `budget_metric` | nur `"queries"` (s. `oracles/base.py`) | `"queries"` |
+
+### Was daraus gebaut ist
+
+Die REGISTRY (`estimators/__init__.py`) kombiniert diese Stufen zu den
+lauffaehigen Verfahren -- `python run_experiment.py --list` zeigt
+die Namen:
+
+| Namensmuster | Oracle | Sampler | Thinning | Formel |
+|---|---|---|---|---|
+| `uniform-collision[__weighted]` | Uniform | Uniform | none | `uis-collision` / `wis-col-katzir` |
+| `wis-katzir__indep` | DegWeightedIndependent | Uniform | none | `wis-col-katzir` |
+| `{uis,wis-katzir}__walk5` | ShortWalkIndependent(steps=5) | Uniform | none | beide je Set |
+| `rw-plain__<dead_end>__<none\|simple\|shifted>` | Crawl | RandomWalk | alle drei | `uis-collision` |
+| `rw-plain__<dead_end>__margin[N]` | Crawl | RandomWalk | none + Margin | `uis-collision` |
+| `wis-katzir__rw-<dead_end>[__margin]` | Crawl | RandomWalk | none (+ Margin) | `wis-col-katzir` |
+| `rw-weighted__restart__none` | Crawl | RandomWalk | none | `wis-col-katzir` |
+| `capture-recapture__<dead_end>[__<formel>]` | Crawl | RandomWalk(`n_walks`) | by-walk | LP / chapman / schnabel / cross / cross-wis |
+| `capture-recapture__uniform[__<formel>]` | Uniform | Uniform(`n_walks`) | by-walk | dieselben fuenf |
+
+Das Kreuzprodukt laeuft ueber `<dead_end>` ∈ {`restart`, `backtrack`,
+`history`}. Zwei Zahlen lassen sich im Namen ueberschreiben und stehen deshalb
+nicht einzeln in der REGISTRY: `...__margin20` (Safety Margin 20) und
+`...__schnabel8` (8 Faenge statt `config.DEFAULT_CAPTURES = 4`).
 
 ## Gerichtet vs. ungerichtet vergleichen
 
@@ -697,6 +812,10 @@ dasselbe Verfahren kann mit einem anderen Oracle in die andere Kategorie
 fallen. `estimators.build(name)` haengt das Label nach der Konstruktion an die
 Instanz; ein direkt konstruierter Estimator hat `category is None`.
 
+Das Label steuert die *Auswahl* (`estimators.build_all(category=...)`), nicht
+die Darstellung: der Plot teilt bewusst nicht danach auf, sondern zeigt alle
+gewaehlten Estimators zusammen in einem Panel je Kantensicht.
+
 ## Groesse und Laufzeit
 
 Beim Laden werden die Original-Schluessel (bei gpt4o_io Strings wie
@@ -743,6 +862,32 @@ es ist derselbe Client.
 Sind die Einstiegsknoten fest bekannt, ist der Zufallszugriff faktisch gratis:
 dann `COST_RANDOM_NODE = 0` setzen.
 
+**Was ein Sample kostet -- und warum das nicht ueberall gleich ist.** Eine
+Nachbarabfrage kostet eine Einheit und liefert zweierlei zugleich: den Grad und
+die Moeglichkeit, zu einem zufaelligen Nachbarn weiterzugehen. Beim Random Walk
+ist der Grad damit gratis -- der Schritt musste ohnehin bezahlt werden. Beim
+gleichverteilten Ziehen ist er es nicht: dort sind Ziehung und Gradabfrage zwei
+verschiedene Anfragen.
+
+Bezahlt wird deshalb nur, was auch benutzt wird. `Sample.degree` liest allein
+`InverseDegreeWeighting`; jedes Verfahren mit `UniformWeighting` fragt den Grad
+gar nicht erst ab (`UniformSampler(with_degree=False)`, gesetzt aus
+`weighting.needs_degree`):
+
+| Verfahren | Anfragen je Sample |
+|---|---|
+| Random Walk (`rw-*`, `capture-recapture__<dead_end>`) | 1 -- Grad faellt beim Schritt mit ab |
+| `*__walk5` | 1 -- die Antwort bringt die Nachbarliste mit |
+| uniformes Ziehen ohne Gradgewichtung | 1 -- nur die Ziehung |
+| uniformes Ziehen **mit** Gradgewichtung (`wis-katzir__indep`, `*__cross-wis`) | 2 -- Ziehung + Gradabfrage |
+
+Vorher zahlte jedes uniforme Verfahren zwei Einheiten, auch wenn die Formel den
+Grad nie anfasste -- `uniform-collision` bekam damit halb so viele Samples wie
+noetig und, weil Kollisionen mit k^2 skalieren, ein Viertel der Kollisionen.
+Die Aufschluesselung je Verfahren steht in
+`data/results/<graph>__budget_breakdown.csv` (`results.budget_breakdown`),
+`plot_results.py` gibt sie zusaetzlich auf der Konsole aus.
+
 **Warum der Cache-Treffer nicht gratis ist.** Mit Preis 0 laeuft ein Walk, der
 sich in einer kleinen, bereits bekannten Region verfaengt, endlos gratis weiter
 und sammelt beliebig viele wertlose, hochkorrelierte Samples -- die Schaetzung
@@ -772,7 +917,8 @@ erschoepfen. Das Oracle lehnt sie mit einem `ValueError` ab.
 
 In der Ergebnis-CSV stehen ausserdem `queries_used` (bezahlte, gewichtete
 Kosten), `unique_nodes_used` (Statistik), `cached_queries` sowie
-`n_random_node` / `n_neighbors`.
+`n_random_node` / `n_neighbors` -- die Spalten, aus denen
+`results.budget_breakdown()` die Aufteilung rechnet.
 
 ## Bekannte Vereinfachungen
 

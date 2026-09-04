@@ -305,11 +305,11 @@ def _plots_readme() -> str:
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
                       + "` (`Code/diagnose_walk.py`).", ""]
         elif slug == "ranges":
-            parts += [f"Uebersichtsraster fuer **{label}** (Seed {seed}): "
-                      "Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit "
+            parts += [f"Uebersicht fuer **{label}** (Seed {seed}): "
+                      "Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit "
                       f"`python plot_results.py --graphs {graph}"
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
-                      + "` (`plotting/ranges.py`).", ""]
+                      + "` (`plotting/compare.py`).", ""]
         else:
             parts += ["Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich "
                       "von Hand oder mit einer aelteren Codeversion erzeugt.", ""]

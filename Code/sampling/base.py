@@ -11,7 +11,7 @@ alle Estimators mit gleichem Oracle und gleichem Sampler-Schluessel einen
 einzigen Walk teilen.
 
 Schnittstelle:
-    class Sample            -- node (Original-Key), degree, step, walk
+    class Sample            -- node (Original-Key), degree (ggf. None), step, walk
     class Sampler
         .sample(oracle) -> list[Sample]   (laeuft, bis das Budget erschoepft ist)
         .key() -> str                     (gleiche Ziehung == gleicher Schluessel)
@@ -27,7 +27,10 @@ from typing import Any
 @dataclass(frozen=True)
 class Sample:
     node: Any  # Original-Knotenname aus der Adjazenzliste
-    degree: int
+    # `None`, wenn der Sampler den Grad gar nicht erst abgefragt hat -- er
+    # kostet dann auch nichts (siehe UniformSampler(with_degree=False)).
+    # Gelesen wird er ausschliesslich von weighting.InverseDegreeWeighting.
+    degree: int | None
     step: int
     # Aus welchem Durchgang das Sample stammt. Nur Sampler, die mehrere Walks
     # laufen (Capture-Recapture), setzen das -- alle anderen bleiben bei 0.

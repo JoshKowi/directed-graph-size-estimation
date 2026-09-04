@@ -55,7 +55,24 @@ REGISTRY: dict[str, Entry] = {
         partial(uniform_collision.build, formula="uis-collision"), Category.COMPARISON),
     "uniform-collision__weighted": Entry(
         partial(uniform_collision.build, formula="wis-col-katzir"), Category.COMPARISON),
+    # Capture-Recapture ohne Grad-/Walk-Verzerrung: dieselben Formeln, aber mit
+    # UniformSampler statt RandomWalkSampler (s. capture_recapture.build).
+    # dead_end ist dabei wirkungslos, also nur einmal, nicht je Dead-End.
+    "capture-recapture__uniform": Entry(
+        partial(capture_recapture.build, sampler="uniform"), Category.COMPARISON),
+    "capture-recapture__uniform__chapman": Entry(
+        partial(capture_recapture.build, sampler="uniform", formula="chapman"),
+        Category.COMPARISON),
+    "capture-recapture__uniform__schnabel": Entry(
+        partial(capture_recapture.build, sampler="uniform", formula="schnabel",
+                n_captures=config.DEFAULT_CAPTURES),
+        Category.COMPARISON),
 }
+for _cf in ("cross", "cross-wis"):
+    REGISTRY[f"capture-recapture__uniform__{_cf}"] = Entry(
+        partial(capture_recapture.build, sampler="uniform", formula=_cf),
+        Category.COMPARISON)
+del _cf
 
 # -- Real umsetzbar: Random Walk x Sackgassen-Strategie x Thinning -------
 for _dead_end in DEAD_ENDS:
@@ -106,6 +123,17 @@ for _de in DEAD_ENDS:
                 dead_end=_de, thinning="none", formula="wis-col-katzir"),
         Category.REALIZABLE,
     )
+    # dieselbe Formel auf den echten Thinnings -- Gegenstueck zu
+    # rw-plain__<dead_end>__<thinning>, nur gradgewichtet (wis-col-katzir)
+    # statt uis-collision.
+    for _th in THINNINGS:
+        if _th == "none":
+            continue
+        REGISTRY[f"wis-katzir__rw-{_de}__{_th}"] = Entry(
+            partial(random_walk_collision.build,
+                    dead_end=_de, thinning=_th, formula="wis-col-katzir"),
+            Category.REALIZABLE,
+        )
     # dieselbe Formel mit Safety Margin -- auf `undirected` die interessantere
     # Reihe, weil dort pi ~ deg stimmt und nur die Abhaengigkeit stoert
     REGISTRY[f"wis-katzir__rw-{_de}__margin"] = Entry(
@@ -113,7 +141,7 @@ for _de in DEAD_ENDS:
                 margin=config.SAFETY_MARGIN, formula="wis-col-katzir"),
         Category.REALIZABLE,
     )
-del _de
+del _de, _th
 
 # -- Kurze unabhaengige Walks -------------------------------------------
 # Endknoten eines 5-Schritt-Walks je Sample: Walk-Verzerrung ohne

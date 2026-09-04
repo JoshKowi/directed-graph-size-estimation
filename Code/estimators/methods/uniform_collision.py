@@ -18,10 +18,16 @@ from weighting.schemes import UniformWeighting
 
 
 def build(formula: str = "uis-collision") -> PipelineEstimator:
+    # Die Stichprobe ist unverzerrt, die richtigen Gewichte sind deshalb
+    # konstant -- auch fuer die "gewichtete" Formel, die dann auf den
+    # klassischen Birthday-Schaetzer zurueckfaellt. Damit wird Sample.degree
+    # nie gelesen und der Sampler fragt ihn gar nicht erst ab: ein Sample
+    # kostet hier eine Einheit, nicht zwei.
+    weighting = UniformWeighting()
     return PipelineEstimator(
         name="uniform-collision",
         oracle_cls=UniformNodeOracle,
-        sampler=UniformSampler(),
-        weighting=UniformWeighting(),
+        sampler=UniformSampler(with_degree=weighting.needs_degree),
+        weighting=weighting,
         formula=FORMULAS[formula](),
     )

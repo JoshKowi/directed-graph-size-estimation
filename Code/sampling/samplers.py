@@ -15,19 +15,57 @@ from sampling.dead_ends import DeadEndStrategy, RestartToStart
 
 
 class UniformSampler(Sampler):
-    """Unabhaengige, gleichverteilte Knoten (nur mit globalem Oracle moeglich)."""
+    """Unabhaengige, gleichverteilte Knoten (nur mit globalem Oracle moeglich).
+
+    `n_walks` > 1 teilt die Ziehungen in ebenso viele Faenge auf (Budget
+    gleichmaessig verteilt, letzter Fang bis zum Budgetende) -- die Form, die
+    Capture-Recapture braucht (siehe estimators/methods/capture_recapture.py
+    und sampling.thinning.ByWalkThinning). Bei unabhaengigen Ziehungen aendert
+    das an der Verteilung nichts, nur an der Buchhaltung: Samples tragen den
+    Fang-Index in Sample.walk, sonst liefen alle Faenge unter walk=0 zusammen
+    und ByWalkThinning saehe nur einen.
+
+    `with_degree` entscheidet, ob zu jedem gezogenen Knoten auch sein Grad
+    abgefragt wird. Das ist eine *zweite* Anfrage nach aussen und kostet noch
+    einmal so viel wie die Ziehung selbst (oracles.base._fetch): mit
+    Gradabfrage kostet ein Sample zwei Einheiten, ohne eine. Anders als beim
+    Random Walk faellt der Grad hier nicht nebenbei ab -- dort ist die
+    Nachbarabfrage ohnehin noetig, um weiterzugehen, und liefert den Grad
+    gratis mit.
+
+    Gebraucht wird der Grad allein von weighting.InverseDegreeWeighting; die
+    build()-Funktionen setzen das Flag deshalb aus `weighting.needs_degree`.
+    Ohne Abfrage tragen die Samples `degree=None`.
+    """
 
     name = "uniform"
+
+    def __init__(self, n_walks: int = 1, with_degree: bool = True) -> None:
+        self.n_walks = n_walks
+        self.with_degree = with_degree
+
+    def key(self) -> str:
+        # with_degree gehoert in den Schluessel: es aendert die Kosten je
+        # Sample und damit die Trajektorie bei gegebenem Budget. Ohne das
+        # wuerde --share-walks Estimators mit und ohne Gradabfrage in einen
+        # gemeinsamen Lauf stecken (s. estimators/pipeline.py).
+        return f"{self.name}|walks{self.n_walks}|deg{int(self.with_degree)}"
 
     def sample(self, oracle) -> list[Sample]:
         samples: list[Sample] = []
         try:
-            while True:
-                u = oracle.random_node()
-                samples.append(Sample(u, oracle.degree(u), len(samples)))
-                oracle.mark()      # fuer Budget-Zwischenstaende, s. oracles.base
+            for walk in range(self.n_walks):
+                # Letzter Fang bis zum Budgetende, s. RandomWalkSampler.sample().
+                limit = (math.inf if walk == self.n_walks - 1
+                         else oracle.budget * (walk + 1) / self.n_walks)
+                while oracle.queries < limit:
+                    u = oracle.random_node()
+                    deg = oracle.degree(u) if self.with_degree else None
+                    samples.append(Sample(u, deg, len(samples), walk))
+                    oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
         except BudgetExceeded:
             return samples
+        return samples
 
 
 class RandomWalkSampler(Sampler):

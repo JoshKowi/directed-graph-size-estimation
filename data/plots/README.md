@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-02 14:38 |
+| Daten vom | 2026-09-02 17:59 |
 |---|---|
-| Code-Fingerabdruck | `86ba656fcc7a` |
+| Code-Fingerabdruck | `ef2b7da65295` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -28,6 +28,10 @@ Referenzreihe in allen `wis_*`/`deadend_*`-Grafiken: `uniform-collision`.
 
 ## Dateien
 
+### `Slashdot0811__cap-recap.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
 ### `Slashdot0811__deadend_uis__directed.png`
 
 UIS collision counting with a random walk -- dead-end strategies (directed)
@@ -40,9 +44,13 @@ UIS collision counting with a random walk -- dead-end strategies (directed)
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
 
+### `Slashdot0811__ranges-2.png`
+
+Uebersicht fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/compare.py`).
+
 ### `Slashdot0811__ranges.png`
 
-Uebersichtsraster fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/ranges.py`).
+Uebersicht fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/compare.py`).
 
 ### `Slashdot0811__thinning-without-weights.png`
 
@@ -116,7 +124,19 @@ Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 
 
 Diagnose eines Random Walks auf **GPT-4 knowledge graph (with literals)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph adjacency_list_uni --views directed undirected` (`Code/diagnose_walk.py`).
 
-### `gpt4_io__cap_recap.png`
+### `gpt4_io__01cap-recap.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__02unif-col.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__03a-rw.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__03c-rw-thinning.png`
 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
@@ -128,17 +148,61 @@ Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit 
 
 Diagnose eines Random Walks auf **GPT-4 knowledge graph (instances only)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph gpt4_io --views directed undirected` (`Code/diagnose_walk.py`).
 
+### `gpt4_io__wis_rw__undirected.png`
+
+WIS with a true random walk -- all dead-end strategies (undirected)
+
+- Graph: **GPT-4 knowledge graph (instances only)** (`gpt4_io`)
+- Seed: 42
+- Einstieg: Default (config.SEED_NODES)
+- Views: undirected
+- Estimators: uniform-collision, wis-katzir__rw-restart, wis-katzir__rw-backtrack, wis-katzir__rw-history
+
+Erzeugt mit `python plot_wis.py --graphs gpt4_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw__undirected`).
+
 ### `gpt4o_adj_from_dataset__ranges.png`
 
-Uebersichtsraster fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/ranges.py`).
+Uebersicht fuer **GPT-4o knowledge graph (with literals)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_adj_from_dataset` (`plotting/compare.py`).
 
-### `gpt4o_io__cap_recap.png`
+### `gpt4o_io__01cap-recap.png`
 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
+### `gpt4o_io__02unif-col.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__03a-rw.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__03c-rw-thinning.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__ranges-2.png`
+
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
+
+### `gpt4o_io__ranges-3.png`
+
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
+
+### `gpt4o_io__ranges-4.png`
+
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
+
+### `gpt4o_io__ranges-5.png`
+
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
+
+### `gpt4o_io__ranges-6.png`
+
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
+
 ### `gpt4o_io__ranges.png`
 
-Uebersichtsraster fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kategorie, Zeile = Kantensicht. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/ranges.py`).
+Uebersicht fuer **GPT-4o knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4o_io` (`plotting/compare.py`).
 
 ### `gpt4o_io__thinning-without-weights.png`
 
@@ -191,6 +255,7 @@ oben pruefen und gegen den Commit, der sie hinzugefuegt hat
 (`git log -- data/plots/saved/<name>.png`).
 
 - `Slashdot0811__wis_rw_history__views.png`
+- `gpt4_io__walk_diagnosis-sink.png`
 - `gpt4o_io__ranges.png`
 - `gpt4o_io__walk_diagnosis-sink.png`
 - `gpt4o_io__walk_diagnosis-weights.png`

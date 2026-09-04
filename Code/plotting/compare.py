@@ -1,19 +1,26 @@
 """Vergleichs-Plot: frei gewaehlte Estimators, frei gewaehlte Kantensichten.
 
-Anders als plotting.ranges (festes Raster Kategorie x View) stellt diese
-Funktion genau die Reihen nebeneinander, die man vergleichen will -- eine
-Spalte je View, eine Farbe je Estimator.
+Eine Spalte je View, eine Farbe je Estimator -- nebeneinander stehen genau die
+Reihen, die man vergleichen will. Die Kategorie (Vergleich / real umsetzbar)
+teilt das Bild bewusst *nicht* auf: sie ist ein Label der REGISTRY und sagt
+nichts darueber, welche Verfahren man nebeneinander sehen moechte.
 
 Gezeigt wird pro Estimator und Budget die Spanne min..max ueber die n Laeufe
 plus der Median, je Estimator leicht gegeneinander versetzt (sonst verdecken
 sich Verfahren mit gleichem Wert). Die y-Achse ist Schaetzung/|V| (log), die gestrichelte Linie
 bei 1.0 ist die wahre Groesse.
 
+Die Breite je Spalte ist fest, bis mehr als BUDGETS_PER_PANEL Budgets auf der
+x-Achse stehen; danach waechst sie je weiterem Budget um PANEL_GROWTH Zoll,
+damit die zweizeiligen Budget-Labels nicht zusammenruecken.
+
 `note` steht klein oben rechts und nennt die Herkunft des Bildes -- vor allem
 den Seed. Ohne ihn ist nicht zu erkennen, ob zwei Bilder desselben Graphen
 denselben Zufallsstrom zeigen oder zwei unabhaengige Durchlaeufe.
 
 Schnittstelle:
+    VIEW_TITLES: dict[str, str]
+    budget_ticks(panel, budgets) -> list[str]
     plot_comparison(summary, graph_name, estimators, views, title, path,
                     colors=None, note=None) -> matplotlib.figure.Figure
 """
@@ -30,8 +37,58 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 import config  # noqa: E402
-from plotting.ranges import VIEW_TITLES, budget_ticks  # noqa: E402
 from plotting.style import INK, INK_MUTED, SURFACE, apply_axes_style, color_for  # noqa: E402
+
+
+# Ab wie vielen Budgets die Spalte breiter wird, und um wie viel Zoll je
+# weiterem Budget. 6.6 Zoll tragen sechs zweizeilige x-Labels bequem.
+BUDGETS_PER_PANEL = 6
+PANEL_GROWTH = 0.9
+
+# Titelzeichen je Zoll Figurbreite bei fontsize 11 -- nur fuer den Umbruch.
+CHARS_PER_INCH = 7.9
+
+
+def _format_budget(b: float) -> str:
+    return f"{b * 100:.3f}".rstrip("0").rstrip(".") + " %"
+
+
+def budget_ticks(panel, budgets: list[float]) -> list[str]:
+    """Zweizeilige x-Beschriftung: relatives und absolutes erlaubtes Budget.
+
+    Eine dritte Zeile mit dem tatsaechlich ausgegebenen Budget erscheint nur,
+    wenn es merklich abweicht. Mit config.COST_CACHE_HIT > 0 schoepft jeder
+    Lauf sein Budget aus, die Zeile sollte also nie auftauchen -- sie ist die
+    Kontrolle, dass diese Annahme haelt.
+
+    panel: die Summary-Zeilen des Panels (ein View, die gezeigten Estimators).
+    """
+    labels = []
+    for b in budgets:
+        rows = panel[panel["budget_rel"] == b]
+        if rows.empty:
+            labels.append(_format_budget(b))
+            continue
+        allowed = float(rows["budget_abs"].iloc[0])
+        label = f"{_format_budget(b)}\n{allowed:,.0f}".replace(",", " ")
+        used_lo, used_hi = rows["used_median"].min(), rows["used_median"].max()
+        if used_lo < 0.98 * allowed:          # sonst redundant
+            fmt = lambda v: f"{v:,.0f}".replace(",", " ")  # noqa: E731
+            span = fmt(used_lo) if used_hi <= 1.02 * used_lo else f"{fmt(used_lo)}-{fmt(used_hi)}"
+            label += f"\nused {span}"
+        labels.append(label)
+    return labels
+
+
+# Beschriftungen im Bild sind durchgehend englisch (die Grafiken gehen in
+# Praesentationen); Kommentare und Docstrings bleiben deutsch. Die Reihenfolge
+# ist zugleich die Spaltenreihenfolge im Bild -- nicht alphabetisch sortieren,
+# sonst stuende `reverse` vor `undirected`.
+VIEW_TITLES = {
+    "directed": "directed (original)",
+    "undirected": "undirected (symmetrized)",
+    "reverse": "reverse (in-edges only)",
+}
 
 
 def plot_comparison(
@@ -65,7 +122,13 @@ def plot_comparison(
             f"Estimators: {estimators}"
         )
 
-    fig, axes = plt.subplots(1, len(views), figsize=(6.6 * len(views), 4.6),
+    # Ab BUDGETS_PER_PANEL Budgets waechst die Spalte mit: bis dahin passen die
+    # zweizeiligen x-Labels (relativ + absolut) nebeneinander, danach ruecken
+    # sie zusammen und werden unleserlich. Statt sie zu drehen oder zu kuerzen
+    # bekommt die Grafik je weiterem Budget ein Stueck Breite dazu.
+    panel_width = 6.6 + PANEL_GROWTH * max(0, len(budgets) - BUDGETS_PER_PANEL)
+    fig_width = panel_width * len(views)
+    fig, axes = plt.subplots(1, len(views), figsize=(fig_width, 4.6),
                              sharey=True, squeeze=False)
     fig.patch.set_facecolor(SURFACE)
 
@@ -99,18 +162,29 @@ def plot_comparison(
         if c == 0:
             ax.set_ylabel("Estimate / true size", color=INK_MUTED, fontsize=9)
 
-    handles, labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles, labels, frameon=False, fontsize=9, labelcolor=INK_MUTED,
-               ncol=min(len(labels), 3), loc="upper left",
-               bbox_to_anchor=(0.01, 0.93), handletextpad=0.4, columnspacing=1.4)
-
-    wrapped = textwrap.fill(title, width=52 * len(views))
-    n_legend_rows = -(-len(labels) // min(len(labels), 3))
-    top = 0.90 - 0.035 * n_legend_rows - 0.03 * wrapped.count("\n")
+    # Kopfzone von oben nach unten: Titel (links) neben Hinweis (rechts),
+    # darunter die Legende, darunter die Achsen. Titel und Legende sind beide
+    # mehrzeilig, ihre Hoehe muss deshalb durchgereicht werden -- sonst schiebt
+    # sich bei einer schmalen Figur der umbrochene Titel in die Legende.
+    #
+    # Der Hinweis steht in der Titelzeile und braucht dort Platz: ohne den
+    # Abzug laeuft der Titel bei nur einer Spalte in ihn hinein.
+    wrapped = textwrap.fill(
+        title, width=max(30, int(CHARS_PER_INCH * fig_width)
+                             - (len(note) // 2 if note else 0)))
     fig.suptitle(wrapped, color=INK, fontsize=11, x=0.01, ha="left", va="top", y=0.985)
     if note:
         fig.text(0.99, 0.985, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
-    fig.tight_layout(rect=(0, 0, 1, top))
+
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    legend_top = 0.985 - 0.042 * (wrapped.count("\n") + 1) - 0.01
+    fig.legend(handles, labels, frameon=False, fontsize=9, labelcolor=INK_MUTED,
+               ncol=min(len(labels), 3), loc="upper left",
+               bbox_to_anchor=(0.01, legend_top), handletextpad=0.4,
+               columnspacing=1.4)
+
+    n_legend_rows = -(-len(labels) // min(len(labels), 3))
+    fig.tight_layout(rect=(0, 0, 1, legend_top - 0.07 * n_legend_rows))
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)

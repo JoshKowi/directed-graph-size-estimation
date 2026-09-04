@@ -7,6 +7,7 @@ Sampler nicht kennen.
 
 Schnittstelle:
     class WeightingScheme
+        .name, .needs_degree
         .weights(samples) -> np.ndarray[float]
 """
 
@@ -22,6 +23,13 @@ from sampling.base import Sample
 
 class WeightingScheme(ABC):
     name: str = "weighting"
+
+    # Braucht dieses Schema `Sample.degree`? Steuert, ob der Sampler den Grad
+    # ueberhaupt abfragt -- eine Gradabfrage kostet Budget (oracles.base
+    # ._fetch), und wofuer nicht gerechnet wird, soll auch nicht bezahlt
+    # werden. Nur InverseDegreeWeighting liest den Grad; die gewichteten
+    # Formeln bekommen ihn ausschliesslich ueber das `weights`-Array.
+    needs_degree: bool = False
 
     @abstractmethod
     def weights(self, samples: Sequence[Sample]) -> np.ndarray:
