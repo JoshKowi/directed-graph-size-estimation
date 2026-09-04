@@ -6,7 +6,7 @@ ungewichtete Collision-Formel) und die gestrichelte Linie bei 1.0.
     1  wis_indep__undirected   unabhaengige gradgewichtete Ziehungen, symmetrisiert
     2  wis_indep__directed     dasselbe auf dem Originalgraphen
     3  wis_rw__undirected      alle drei Random-Walk-Varianten, symmetrisiert
-    4  wis_rw_history__views   nur history, gerichtet vs symmetrisiert
+    4  wis_rw_history__views   nur history, symmetrisiert vs gerichtet
     5  deadend_uis__directed   Sackgassen-Strategien mit UIS-Formel, gerichtet
 
 Grafik 5 laeuft bewusst auf `directed`: nur dort gibt es ueberhaupt
@@ -69,8 +69,8 @@ FIGURES = [
       "wis-katzir__rw-history"], ["undirected"],
      "WIS with a true random walk -- all dead-end strategies (undirected)"),
     ("wis_rw_history__views",
-     [REFERENCE, "wis-katzir__rw-history"], ["directed", "undirected"],
-     "WIS with random walk (history) -- directed vs undirected"),
+     [REFERENCE, "wis-katzir__rw-history"], ["undirected", "directed"],
+     "WIS with random walk (history) -- undirected vs directed"),
     ("deadend_uis__directed",
      [REFERENCE, "rw-plain__restart__none", "rw-plain__backtrack__none",
       "rw-plain__history__none"], ["directed"],

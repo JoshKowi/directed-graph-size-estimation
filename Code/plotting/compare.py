@@ -84,9 +84,15 @@ def budget_ticks(panel, budgets: list[float]) -> list[str]:
 # Praesentationen); Kommentare und Docstrings bleiben deutsch. Die Reihenfolge
 # ist zugleich die Spaltenreihenfolge im Bild -- nicht alphabetisch sortieren,
 # sonst stuende `reverse` vor `undirected`.
+#
+# `undirected` steht links: dort gilt pi ~ deg, die Schaetzer arbeiten unter
+# ihrer eigenen Voraussetzung. Das ist der Bezugspunkt, gegen den sich rechts
+# ablesen laesst, was die Richtung kostet. Umgekehrt gelesen -- erst der
+# schwierige Fall, dann der einfache -- steht die Referenz hinter dem, was sie
+# einordnen soll.
 VIEW_TITLES = {
-    "directed": "directed (original)",
     "undirected": "undirected (symmetrized)",
+    "directed": "directed (original)",
     "reverse": "reverse (in-edges only)",
 }
 
