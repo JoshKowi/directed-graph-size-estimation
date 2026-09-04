@@ -309,54 +309,28 @@ Wirkt ausschliesslich auf gerichteten Views (s. "Random-Walk-Varianten").
 | `backtrack` | Schritte zurueck, bis ein Vorgaenger eine andere Abzweigung hat |
 | `history` | Sprung auf einen zufaelligen bereits besuchten Knoten |
 
-### 3b. DURW -- Random Walk, dessen Verteilung auch gerichtet bekannt ist
+### 3b. DURW -- Sprung statt Sackgassen-Strategie
 
 Der einfache Random Walk laeuft auf den gerichteten Views auf einem Graphen,
 auf dem er gar nicht laufen duerfte: pi(u) ~ deg(u) gilt nur ungerichtet, und
 jede Sackgassen-Strategie verschiebt die Verteilung noch einmal. DURW (Ribeiro
-& Towsley, `sampling/durw.py`) loest das mit zwei Zutaten:
+& Towsley) macht beobachtete Ausgangskanten rueckwaerts begehbar -- aber nur
+auf noch *unbesuchte* Knoten, damit kein besuchter Knoten je seinen Grad
+aendert -- und springt mit Wahrscheinlichkeit `w / (w + deg_Gu(v))`. Auf dem so
+aufgebauten ungerichteten G_u ist `pi(v) ~ w + deg_Gu(v)`, also bekannt, sobald
+v besucht ist; `weighting.DurwWeighting` korrigiert damit. Herleitung und die
+Feinheiten der Buchhaltung stehen im Docstring von `sampling/durw.py`.
 
-1. **Rueckwaerts begehbare Kanten.** Jede beobachtete Ausgangskante u -> v wird
-   gemerkt; landet der Walk spaeter auf v, darf er sie rueckwaerts nehmen.
-   Aber nur, solange v noch *unbesucht* ist -- Kanten auf bereits besuchte
-   Knoten werden verworfen. Damit steht der Grad eines Knotens im aufgebauten
-   ungerichteten Graphen G_u fest, sobald er zum ersten Mal besucht wird, und
-   aendert sich nie wieder. Genau das braucht die Gewichtung: sonst hinge sie
-   an Kanten, die der Walk erst spaeter sieht.
-2. **Gradproportionale Spruenge.** Mit Wahrscheinlichkeit `w / (w + deg_Gu(v))`
-   springt der Walk auf einen zufaellig gezogenen Knoten. Auf dem so
-   entstehenden gewichteten Graphen ist
-
-       pi(v) = (w + deg_Gu(v)) / (vol(V) + w|V|)
-
-   -- bis auf die Normierung bekannt, sobald v besucht ist; die kuerzt der
-   Kollisionsschaetzer heraus. `weighting.DurwWeighting` setzt das als
-   `1/(w + deg_Gu)` ein (nicht `InverseDegreeWeighting`, die gehoert zum
-   einfachen Random Walk).
-
-Zwei Dinge fallen dadurch weg: eine **Sackgassen-Strategie** (bei `deg_Gu = 0`
-ist die Sprungwahrscheinlichkeit 1 -- Sackgassen sind der Grenzfall der
-Sprungregel, kein Sonderfall) und `allow_self_loops` (Schlingen sind beim
-Laden schon weg). `Sample.degree` traegt bei DURW den Grad in G_u, nicht den
-Ausgangsgrad.
-
-Bei `n_walks` > 1 (Capture-Recapture) baut jeder Fang sein **eigenes** G_u auf,
-sonst waeren die Faenge ueber die geteilte Historie abhaengig.
+Eine Sackgassen-Strategie braucht DURW nicht: bei `deg_Gu = 0` ist die
+Sprungwahrscheinlichkeit 1. An die Stelle von `dead_end` tritt die Sprungart:
 
 | `jump` | Sprungziel | braucht | Kategorie |
 |---|---|---|---|
 | `uniform` | gleichverteilt aus V | `JumpCrawlOracle.random_node()` | Vergleich |
 
-Die Kategorie haengt an der Sprungart, nicht am Verfahren: `uniform` setzt
-dieselbe Kenntnis von V voraus, die auch `uniform-collision` zum Vergleich
-macht. Vergeben wird sie in `_JUMP_CATEGORY` (`estimators/__init__.py`) -- dort
-kommt eine Sprungart, die ihr Ziel aus externen Daten simuliert, als real
-umsetzbar hinein, ohne dass sich am Sampler etwas aendert.
-
-Das Sprunggewicht `w` (`config.DURW_JUMP_WEIGHT`, Default 1.0) steuert den
-Handel: groesseres w heisst haeufiger springen -- weniger Autokorrelation und
-bessere Abdeckung, dafuer geht mehr Budget in Spruenge
-(`COST_RANDOM_NODE`) statt in Schritte (`COST_CACHE_HIT` beim Wiederbesuch).
+Die Kategorie haengt an der Sprungart, nicht am Verfahren, und wird deshalb in
+`_JUMP_CATEGORY` (`estimators/__init__.py`) vergeben. Das Sprunggewicht `w`
+steht in `config.DURW_JUMP_WEIGHT` (Default 1.0).
 
 ### 4. Thinning -- aus der Trajektorie werden Sample-Sets
 
