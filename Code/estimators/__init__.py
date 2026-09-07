@@ -169,7 +169,7 @@ del _dead_end, _thinning, _cf
 # einfachen Random Walk, nur mit einem Sampler, dessen Stationaerverteilung
 # auch auf den gerichteten Views bekannt ist (sampling.durw). An der Stelle
 # von `dead_end` steht die Sprungart -- eine Sackgassen-Strategie braucht DURW
-# nicht.
+# nicht, weil eine Sackgasse dort nie absorbierend wird (s. sampling.durw).
 #
 # Die Kategorie haengt daran, wie der Sprung beschafft wird, nicht am Sampler:
 # `uniform` zieht gleichverteilt aus V und setzt damit dieselbe Kenntnis der

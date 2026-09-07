@@ -30,10 +30,21 @@ Zwei Zutaten:
 
 Was hier *nicht* vorkommt:
 
-    dead_end -- bei deg_Gu(v) = 0 ist w/(w+0) = 1, der Walk springt
-                zwangslaeufig. Sackgassen sind bei DURW kein Sonderfall,
-                sondern der Grenzfall der Sprungregel. Ein eigener Zweig dafuer
-                wuerde nur den Zufallsstrom verschieben.
+    dead_end -- eine Sackgasse hat bei DURW immer einen Zug, sie wird nie
+                absorbierend. Wurde sie ueber eine Kante erreicht, steht genau
+                diese Kante in ihrem G_u-Grad (sie wurde aufgezeichnet, als der
+                Vorgaenger besucht wurde) -- der Walk geht mit
+                deg_Gu/(w+deg_Gu) zurueck. Nur wer per Sprung auf einer
+                Sackgasse landet, hat deg_Gu = 0, und dann ist w/(w+0) = 1, der
+                Sprung also erzwungen. Beides faellt aus der Sprungregel selbst;
+                ein eigener Zweig dafuer wuerde nur den Zufallsstrom
+                verschieben.
+
+                Nicht verwechseln: "Sackgasse in G_d" (kein Ausgangsgrad) und
+                "deg_Gu = 0" sind verschiedene Dinge. Auf gpt4o_io gerichtet
+                haben 51 % der besuchten Sackgassen deg_Gu >= 1, auf gpt4_io
+                70 %; ihr mittlerer G_u-Grad ist 0,75 bzw. 1,22. Sie springen
+                also haeufig (im Mittel 73 % bzw. 60 %), aber nicht immer.
     allow_self_loops -- graphs.graph._simplify() entfernt Schlingen bereits
                 beim Laden, in G_u kann keine entstehen.
 

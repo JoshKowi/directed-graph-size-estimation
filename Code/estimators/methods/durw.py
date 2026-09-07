@@ -10,8 +10,11 @@ was fuer den einfachen Random Walk gerade nicht gilt.
 Die austauschbaren Achsen:
 
     jump        -- "uniform" (sampling.jumps); an die Stelle von `dead_end`
-                   getreten. DURW braucht keine Sackgassen-Strategie: bei
-                   deg_Gu = 0 ist die Sprungwahrscheinlichkeit 1.
+                   getreten. DURW braucht keine Sackgassen-Strategie, weil eine
+                   Sackgasse nie absorbierend wird: ueber eine Kante erreicht,
+                   traegt sie diese Kante als Rueckweg in ihrem G_u-Grad; per
+                   Sprung erreicht, hat sie deg_Gu = 0 und springt zwingend
+                   weiter (w/(w+0) = 1).
     jump_weight -- w der Sprungregel (config.DURW_JUMP_WEIGHT)
     thinning    -- "none" | "simple" | "shifted"    (sampling.thinning)
     margin      -- Safety Margin wie dort (estimators.formulas). 0 = aus.

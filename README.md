@@ -321,8 +321,17 @@ aufgebauten ungerichteten G_u ist `pi(v) ~ w + deg_Gu(v)`, also bekannt, sobald
 v besucht ist; `weighting.DurwWeighting` korrigiert damit. Herleitung und die
 Feinheiten der Buchhaltung stehen im Docstring von `sampling/durw.py`.
 
-Eine Sackgassen-Strategie braucht DURW nicht: bei `deg_Gu = 0` ist die
-Sprungwahrscheinlichkeit 1. An die Stelle von `dead_end` tritt die Sprungart:
+Eine Sackgassen-Strategie braucht DURW nicht, weil eine Sackgasse dort nie
+absorbierend wird. Wurde sie **über eine Kante** erreicht, steht genau diese
+Kante in ihrem G_u-Grad — sie wurde aufgezeichnet, als der Vorgänger besucht
+wurde — und der Walk geht mit `deg_Gu/(w+deg_Gu)` zurück. Nur wer **per Sprung**
+auf einer Sackgasse landet, hat `deg_Gu = 0` und springt zwingend weiter.
+
+Sackgasse in G_d und `deg_Gu = 0` sind also nicht dasselbe: auf gpt4o_io
+gerichtet haben 51 % der besuchten Sackgassen einen G_u-Grad ≥ 1, auf gpt4_io
+70 %. Ihr mittlerer G_u-Grad ist 0,75 bzw. 1,22, sie springen also häufig (im
+Mittel 73 % bzw. 60 %), aber nicht immer. An die Stelle von `dead_end` tritt
+die Sprungart:
 
 | `jump` | Sprungziel | braucht | Kategorie |
 |---|---|---|---|
