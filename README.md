@@ -341,6 +341,15 @@ Die Kategorie haengt an der Sprungart, nicht am Verfahren, und wird deshalb in
 `_JUMP_CATEGORY` (`estimators/__init__.py`) vergeben. Das Sprunggewicht `w`
 steht in `config.DURW_JUMP_WEIGHT` (Default 1.0).
 
+`w` ist allerdings kein guter Universalwert: wie oft DURW springt, hängt an der
+Struktur des gerichteten Graphen. Auf gpt4o_io (53 % Sackgassen) springt es bei
+w = 1 schon zu 28 % und trifft |V|; auf gpt4_io (10 % Sackgassen) nur zu 15 %
+und schätzt um die Hälfte zu klein. Für den Vergleich gibt es deshalb die Reihe
+`wis-durw__<jump>__w<W>__margin` über `config.DURW_JUMP_WEIGHTS`
+(0,1 / 0,3 / 1 / 3 / 10 / 30 / 100 — sieben Werte, passend zu den höchstens acht
+Kurven je Bild). Den Sprunganteil eines Laufs liefert die Ergebnis-CSV ohne
+Zusatzarbeit: `n_random_node / extra_n_samples`.
+
 ### 4. Thinning -- aus der Trajektorie werden Sample-Sets
 
 Reine Nachbearbeitung: der Walk ist gelaufen, die Queries sind bezahlt.
@@ -409,6 +418,7 @@ die Namen:
 | `capture-recapture__uniform[__<formel>]` | Uniform | Uniform(`n_walks`) | by-walk | dieselben fuenf |
 | `durw-plain__<jump>__<none\|simple\|shifted\|margin[N]>` | JumpCrawl | DURW | alle drei (+ Margin) | `uis-collision` |
 | `wis-durw__<jump>[__<simple\|shifted\|margin[N]>]` | JumpCrawl | DURW | alle drei (+ Margin) | `wis-col-katzir` |
+| `wis-durw__<jump>__w<W>__margin` | JumpCrawl | DURW (Sprunggewicht `W`) | none + Margin | `wis-col-katzir` |
 | `capture-recapture__durw-<jump>[__<formel>]` | JumpCrawl | DURW(`n_walks`) | by-walk | dieselben fuenf |
 
 Das Kreuzprodukt laeuft ueber `<dead_end>` ∈ {`restart`, `backtrack`,

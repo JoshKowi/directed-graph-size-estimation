@@ -196,6 +196,18 @@ for _jump in JUMPS:
         REGISTRY[f"{_tag}__{_jump}__margin"] = Entry(
             partial(durw.build, jump=_jump, thinning="none",
                     margin=config.SAFETY_MARGIN, formula=_f), _cat)
+    # w-Sweep: dieselbe Variante wie wis-durw__<jump>__margin, nur mit
+    # explizitem Sprunggewicht. Bewusst auf diese eine Variante beschraenkt --
+    # gefragt ist die Wirkung von w, nicht die von w x Thinning x Formel.
+    # w=1 ist mit dabei, obwohl es wis-durw__<jump>__margin entspricht: die
+    # Plot-Legende liest sich dadurch einheitlich, und weil beide denselben
+    # walk_key haben, kostet der Doppeleintrag mit --share-walks nichts.
+    # Das w steht *vor* dem margin-Slot, damit "...__margin<N>" weiter greift.
+    for _w in config.DURW_JUMP_WEIGHTS:
+        REGISTRY[f"wis-durw__{_jump}__w{_w:g}__margin"] = Entry(
+            partial(durw.build, jump=_jump, thinning="none",
+                    margin=config.SAFETY_MARGIN, formula="wis-col-katzir",
+                    jump_weight=_w), _cat)
     # Capture-Recapture auf DURW-Faengen -- jeder Fang baut sein eigenes G_u.
     REGISTRY[f"capture-recapture__durw-{_jump}"] = Entry(
         partial(capture_recapture.build, sampler="durw", jump=_jump), _cat)
@@ -210,7 +222,7 @@ for _jump in JUMPS:
             partial(capture_recapture.build, sampler="durw", jump=_jump,
                     formula=_cf), _cat)
 
-del _jump, _cat, _thinning, _name, _tag, _f, _cf
+del _jump, _cat, _thinning, _name, _tag, _f, _cf, _w
 
 
 def register(name: str, factory: Callable[[], Estimator], category: Category) -> None:

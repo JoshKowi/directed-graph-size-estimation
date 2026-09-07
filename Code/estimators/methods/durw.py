@@ -75,7 +75,12 @@ def build(
                  else UniformWeighting())
 
     return PipelineEstimator(
+        # w nur dann im Namen, wenn es vom Default abweicht -- sonst hiessen
+        # die Registry-Eintraege ohne w-Angabe anders als bisher. Fuer Laeufe
+        # ueber die Registry ist der Name ohnehin kosmetisch (estimators.build()
+        # ueberschreibt ihn), fuer Direktaufrufe aus einem Notebook nicht.
         name=f"durw__{formula}__{jump}__{thinning}"
+             + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=JUMP_ORACLES[jump],
         sampler=DurwSampler(jump=JUMPS[jump](), jump_weight=jump_weight,

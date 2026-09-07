@@ -181,6 +181,18 @@ DEFAULT_CAPTURES = 4
 # gleichverteiltes Ziehen. Ribeiro & Towsley untersuchen w zwischen 0,1 und 10.
 DURW_JUMP_WEIGHT = 1.0
 
+# w-Werte, fuer die eigene Registry-Eintraege entstehen (estimators/__init__.py:
+# wis-durw__<jump>__w<W>__margin). Logarithmisch gestuft und genau sieben Stueck
+# -- plot_results.py stellt hoechstens acht Estimators je Bild dar.
+#
+# Der Sweep ist noetig, weil DURW_JUMP_WEIGHT kein guter Universalwert ist: wie
+# oft DURW springt, haengt an der Struktur des gerichteten Graphen. Auf gpt4o_io
+# (53 % Sackgassen) springt es bei w=1 schon zu 28 % und trifft |V|; auf gpt4_io
+# (10 % Sackgassen) nur zu 15 % und schaetzt um die Haelfte zu klein. Erst
+# groesseres w holt das auf (gemessen bei Budget 0,01: w=1 -> 0,178,
+# w=100 -> 0,683 bei 94 % Spruengen).
+DURW_JUMP_WEIGHTS = (0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0)
+
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
