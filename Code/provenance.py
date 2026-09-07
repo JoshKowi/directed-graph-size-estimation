@@ -203,6 +203,25 @@ def _results_readme() -> str:
         elif kind == "view_comparison":
             parts += [f"Gepaarter Vergleich der Kantensichten fuer **{label}** "
                       "(`results.compare_views`). Entsteht beim Plotten.", ""]
+        elif kind == "walk_sink":
+            de = ", ".join(sorted(df["dead_end"].unique())) if "dead_end" in df else "?"
+            parts += [
+                f"Sink-Survival von Random Walks auf **{label}** (`{graph}`), "
+                f"{_num(len(df))} Zeilen (= View x Lauf). Je Lauf: `sunk` und "
+                "`sunk_frac` (Budget-Anteil beim Versinken, leer wenn ueberlebt), "
+                "`stopped_by` (`sink` | `budget`), `steps`, `distinct`.",
+                "",
+                f"- Views: {', '.join(sorted(df['view'].unique()))}",
+                f"- Sackgassen-Strategie: {de}",
+                f"- z (Schritte ohne neuen Knoten): "
+                f"{', '.join(map(str, sorted(df['z'].unique()))) if 'z' in df else '?'}",
+                f"- Seed: {seed}",
+                "",
+                f"Erzeugt mit `python walk_sinks.py --graph {graph}"
+                + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                + "` (`Code/walk_sinks.py`).",
+                "",
+            ]
         else:
             parts += [f"{_num(len(df))} Zeilen.", ""]
     parts += [
@@ -304,6 +323,13 @@ def _plots_readme() -> str:
                       f"--graph {graph} --views directed undirected"
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
                       + "` (`Code/diagnose_walk.py`).", ""]
+        elif slug == "walk_survival":
+            parts += [f"Sink-Survival von Random Walks auf **{label}** (Seed {seed}): "
+                      "x = verbrauchter Budget-Anteil, y = Zahl der Laeufe, die noch "
+                      "neue Knoten finden. Erzeugt mit `python walk_sinks.py "
+                      f"--graph {graph}"
+                      + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                      + "` (`Code/walk_sinks.py`).", ""]
         elif slug == "ranges":
             parts += [f"Uebersicht fuer **{label}** (Seed {seed}): "
                       "Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit "

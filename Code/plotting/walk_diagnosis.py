@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 import config  # noqa: E402
-from plotting.ranges import VIEW_TITLES  # noqa: E402
+from plotting.compare import VIEW_TITLES  # noqa: E402
 from plotting.style import GRID, INK, INK_MUTED, PALETTE, SURFACE, apply_axes_style  # noqa: E402
 
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA, GREEN = PALETTE[:6]
