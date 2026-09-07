@@ -149,11 +149,10 @@ def _resolve_start(graph_name: str, raw: str | None):
     return match[0]
 
 
-def _compute(args) -> pd.DataFrame:
+def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
     global _VIEW, _STAGNATION
-    graph = loader.load_graph(args.graph)
+    graph = loader.load_graph(graph_name)
     start = _resolve_start(graph.name, args.start_node)
-    code = provenance.code_fingerprint()
     _STAGNATION = args.z
 
     rows: list[dict] = []
@@ -198,14 +197,21 @@ def _compute(args) -> pd.DataFrame:
     save = results_io.save_results if args.replace else results_io.append_results
     path = save(df, graph.name, kind=KIND, seed=args.seed, start=args.start_node)
     print("  ->", path)
-    provenance.write_readmes()
     return df
+
+
+def _compute(args) -> list[tuple[str, pd.DataFrame]]:
+    code = provenance.code_fingerprint()
+    out = [(config.resolve_graph(g), _compute_graph(args, g, code)) for g in args.graphs]
+    provenance.write_readmes()
+    return out
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--graph", required=True, help="Name oder Kuerzel")
+    p.add_argument("--graph", "--graphs", dest="graphs", nargs="+", required=True,
+                   metavar="GRAPH", help="ein oder mehrere Namen/Kuerzel")
     p.add_argument("--views", nargs="+", default=["directed"],
                    choices=sorted(VIEWS), help="Kantensichten (Default: directed)")
     p.add_argument("--dead-end", default="history", choices=sorted(DEAD_ENDS),
@@ -230,19 +236,23 @@ def main() -> None:
     args = p.parse_args()
 
     if args.plot_only:
-        graph_name = config.resolve_graph(args.graph)
-        df = results_io.load_results(graph_name, kind=KIND, seed=args.seed,
-                                     start=args.start_node)
-        df = df[df["dead_end"] == args.dead_end]
-        if df.empty:
-            raise SystemExit(f"Keine {KIND}-Zeilen fuer {graph_name} "
-                             f"(dead_end={args.dead_end}, seed={args.seed})")
+        pairs = []
+        for g in args.graphs:
+            graph_name = config.resolve_graph(g)
+            df = results_io.load_results(graph_name, kind=KIND, seed=args.seed,
+                                         start=args.start_node)
+            df = df[df["dead_end"] == args.dead_end]
+            if df.empty:
+                raise SystemExit(f"Keine {KIND}-Zeilen fuer {graph_name} "
+                                 f"(dead_end={args.dead_end}, seed={args.seed})")
+            pairs.append((graph_name, df))
     else:
-        df = _compute(args)
+        pairs = _compute(args)
 
     if not args.no_plot:
         from plotting.walk_survival import plot_survival
-        print("  ->", plot_survival(df))
+        for _, df in pairs:
+            print("  ->", plot_survival(df))
 
 
 if __name__ == "__main__":
