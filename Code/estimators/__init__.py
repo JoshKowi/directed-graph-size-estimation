@@ -230,9 +230,12 @@ def register(name: str, factory: Callable[[], Estimator], category: Category) ->
 
 
 # Namen mit angehaengter Zahl werden zur Laufzeit aufgeloest:
-#   "...__margin20"   -> Eintrag "...__margin"   mit margin=20
-#   "...__schnabel8"  -> Eintrag "...__schnabel" mit n_captures=8
-_NUMBERED = {"margin": "margin", "schnabel": "n_captures"}
+#   "...__margin20"    -> Eintrag "...__margin"   mit margin=20
+#   "...__schnabel8"   -> Eintrag "...__schnabel" mit n_captures=8
+#   "...__shifted16"   -> Eintrag "...__shifted"  mit step=16
+#   "...__simple8"     -> Eintrag "...__simple"   mit step=8
+_NUMBERED = {"margin": "margin", "schnabel": "n_captures",
+             "shifted": "step", "simple": "step"}
 _NUMBERED_RE = re.compile(r"^(?P<base>.+__(?P<kind>" + "|".join(_NUMBERED)
                           + r"))(?P<n>\d+)$")
 
@@ -248,7 +251,8 @@ def build(name: str) -> Estimator:
         raise KeyError(
             f"{name!r} ist kein bekannter Estimator. Bekannt sind: "
             f"{', '.join(sorted(REGISTRY))} (dazu '...__margin<N>' fuer einen "
-            "abweichenden Safety Margin)."
+            "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
+            "fuer eine abweichende Thinning-Schrittweite)."
         )
     # partial-Keywords werden von Aufruf-Keywords ueberschrieben
     est = entry.factory(**kwargs)
