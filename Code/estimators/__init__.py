@@ -41,10 +41,12 @@ from dataclasses import dataclass
 from functools import partial
 
 import config
+import namelists
 from estimators.base import Category, Estimator
 from estimators.methods import (capture_recapture, deg_weighted_independent,
-                                durw, nmmc, random_walk_collision,
-                                short_walk_independent, uniform_collision)
+                                durw, name_list_collision, nmmc,
+                                random_walk_collision, short_walk_independent,
+                                uniform_collision)
 from sampling.dead_ends import DEAD_ENDS
 from sampling.indegree import IN_DEGREES
 from sampling.jumps import JUMPS
@@ -180,12 +182,15 @@ del _dead_end, _thinning, _cf
 #
 # Die Kategorie haengt daran, wie der Sprung beschafft wird, nicht am Sampler:
 # `uniform` zieht gleichverteilt aus V und setzt damit dieselbe Kenntnis der
-# Knotenmenge voraus, die auch `uniform-collision` zur COMPARISON macht. Eine
-# spaeter hinzukommende Sprungart, die ihr Ziel aus externen Daten simuliert,
-# wird hier auf REALIZABLE gesetzt -- am Verfahren aendert sich dadurch nichts.
+# Knotenmenge voraus, die auch `uniform-collision` zur COMPARISON macht. Die
+# Listenquellen (namelists.SOURCES) brauchen sie nicht -- sie ziehen aus
+# externem Wissen und sind deshalb REALIZABLE. Dass sie den Graphen nur zu 8
+# bis 38 % abdecken, ist eine Frage der Guete, nicht der Umsetzbarkeit; was
+# das fuer die Stationaerverteilung bedeutet, steht in oracles/name_list.py.
 _JUMP_CATEGORY = {"uniform": Category.COMPARISON}
+_JUMP_CATEGORY.update({_s: Category.REALIZABLE for _s in namelists.SOURCES})
 
-for _jump in JUMPS:
+for _jump in ("uniform",):
     _cat = _JUMP_CATEGORY[_jump]
     for _thinning in THINNINGS:
         REGISTRY[f"durw-plain__{_jump}__{_thinning}"] = Entry(
@@ -230,6 +235,33 @@ for _jump in JUMPS:
                     formula=_cf), _cat)
 
 del _jump, _cat, _thinning, _name, _tag, _f, _cf, _w
+
+# -- Ziehung aus externen Namenslisten ------------------------------------
+# Zwei Verwendungen derselben Ziehung (oracles.name_list.NameListOracle):
+#
+#   namelist-<quelle>__b<n>   unabhaengige Stichprobe, Gegenstueck zu
+#                             "uniform-collision" -- misst die Ziehung selbst
+#   durw-<quelle>__b<n>       dieselbe Ziehung als DURW-Sprung
+#
+# `b<n>` ist der Burn-in *nach jedem Treffer* (config.DEFAULT_DRAW_BURN_IN),
+# nicht der des Walks. Er soll die Verzerrung der Liste abbauen -- getroffene
+# Knoten haben deutlich hoeheren Grad als verfehlte -- und fuehrt dafuer die
+# Verzerrung eines Random-Walk-Schritts ein. Deshalb die Reihe statt eines
+# festen Werts.
+#
+# Bewusst kein Kreuzprodukt ueber Thinnings und Formeln: gefragt ist die
+# Wirkung der Ziehung, nicht die von Ziehung x Thinning x Formel. Wer mehr
+# braucht, ruft die build()-Funktionen direkt auf.
+for _src in sorted(namelists.SOURCES):
+    _cat = _JUMP_CATEGORY[_src]
+    for _b in config.DRAW_BURN_INS:
+        REGISTRY[f"namelist-{_src}__b{_b}"] = Entry(
+            partial(name_list_collision.build, source=_src, draw_burn_in=_b,
+                    formula="uis-collision"), _cat)
+        REGISTRY[f"durw-{_src}__b{_b}__margin"] = Entry(
+            partial(durw.build, jump=_src, thinning="none", draw_burn_in=_b,
+                    margin=config.SAFETY_MARGIN, formula="wis-col-katzir"), _cat)
+del _src, _cat, _b
 
 # -- NMMC: Non-Markovian Monte Carlo (Lee/Kang/Eun 2019) -----------------
 # Rejection auf dem Simple Random Walk: ein abgelehnter Zug absorbiert die

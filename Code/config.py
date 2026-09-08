@@ -1,7 +1,7 @@
 """Zentrale Konfiguration: Pfade und Default-Parameter des Experiments.
 
 Schnittstelle:
-    ROOT, ADJACENCIES_DIR, RESULTS_DIR, PLOTS_DIR
+    ROOT, ADJACENCIES_DIR, RESULTS_DIR, PLOTS_DIR, ADDITIONALS_DIR, NAME_INDEX_DIR
     DEFAULT_BUDGETS, DEFAULT_N_RUNS, DEFAULT_SEED, DEFAULT_BUDGET_METRIC, DEFAULT_VIEWS
     GRAPH_LABELS, graph_label(name), GRAPH_ALIASES, resolve_graph(name)
     unique_path(path)
@@ -18,6 +18,16 @@ ADJACENCIES_DIR = ROOT / "adjacencies"
 # Ergebnisse (eine CSV je Graph) und Plots.
 RESULTS_DIR = ROOT / "data" / "results"
 PLOTS_DIR = ROOT / "data" / "plots"
+
+# Externe Namenslisten (Wikipedia-Titeldumps, Top-Wikidata-Entitaeten) -- die
+# Rohdaten, aus denen sich eine Ziehung ohne Kenntnis von V speisen laesst.
+# Beschrieben werden sie in namelists.SOURCES.
+ADDITIONALS_DIR = ROOT / "additionals"
+
+# Vorab gebaute Namensindizes: je (Graph, Quelle) ein int32-Array, das jeder
+# Position der Liste eine Knoten-ID oder -1 zuordnet (build_name_index.py).
+# Abgeleitet und jederzeit neu baubar, deshalb nicht versioniert.
+NAME_INDEX_DIR = ROOT / "data" / "name_index"
 
 # --- Anzeigenamen der Graphen ------------------------------------------
 # Der technische Name ist und bleibt der Dateiname der Adjazenzliste: er steht
@@ -222,7 +232,6 @@ NMMC_ALPHAS = (0.0, 1.0, 3.0, 10.0)
 NMMC_C_UPDATE_P = 0.01
 
 
-
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
@@ -258,6 +267,30 @@ DEFAULT_VIEWS = ("directed", "undirected")
 # der Zufallszugriff faktisch gratis -- dann COST_RANDOM_NODE = 0 setzen.
 COST_RANDOM_NODE = 1
 COST_NEIGHBORS = 1
+
+# Preis eines Fehlschlags beim Ziehen aus einer externen Namensliste
+# (oracles.name_list): ein Name, den die Liste kennt, den der Graph aber nicht
+# enthaelt. Solche Zuege sind der Preis dafuer, V *nicht* zu kennen -- die Liste
+# passt nie genau auf den Graphen. Bei einer Trefferquote von 13 % (gpt4_io
+# gegen enwiki) kostet ein Sample 1 + rund 6,5 * COST_DRAW_MISS.
+#
+# Muss > 0 sein: bei 0 dreht die Ziehschleife auf einem Index ohne Treffer
+# endlos -- dasselbe Argument wie bei COST_CACHE_HIT weiter unten.
+COST_DRAW_MISS = 1.0
+
+# Schritte nach einem Treffer, bevor der Knoten in die Stichprobe darf
+# (oracles.name_list). 0 = der gezogene Knoten selbst ist das Sample. Gedacht
+# gegen die Verzerrung der Liste: getroffene Knoten haben deutlich hoeheren
+# Grad als verfehlte (gpt4o_io/enwiki: 10,70 gegen 3,55), ein paar Schritte
+# sollen davon wegfuehren. Sie fuehren dafuer die Verzerrung eines
+# Random-Walk-Schritts ein -- wo das Optimum liegt, ist eine empirische Frage.
+DEFAULT_DRAW_BURN_IN = 0
+
+# Burn-in-Werte, fuer die eigene Registry-Eintraege entstehen
+# (namelist-<quelle>__b<n>, durw-<quelle>__b<n>__margin). Klein gehalten: jeder
+# Schritt kostet eine Nachbarabfrage, und nach wenigen Schritten dominiert
+# ohnehin die Verteilung des Walks statt die der Liste.
+DRAW_BURN_INS = (0, 1, 2, 5, 10)
 
 # Ein Cache-Treffer ist billig, aber nicht gratis: ein realer Crawler haelt die
 # einmal geholte Nachbarschaft, muss sie aber weiterhin nachschlagen. Der Preis

@@ -22,3 +22,12 @@ data/plots/*
 
 # Laufprotokolle der Hintergrundlaeufe
 data/*.log
+
+# Externe Namenslisten (Wikipedia-Titeldumps, QRank): Rohdaten von aussen,
+# zusammen ueber 500 MB, nicht aus dem Code erzeugbar und nicht veraendert.
+# Quelle fuer build_name_index.py, beschrieben in Code/namelists.py.
+additionals/*
+
+# Namensindizes: je (Graph, Quelle) ein int32-Array plus Beschreibung. Aus
+# additionals/ und dem Graphen jederzeit neu baubar (build_name_index.py).
+data/name_index/*

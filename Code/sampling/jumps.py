@@ -24,13 +24,17 @@ Abfragen, die eine Strategie stellt, laufen ueber das Oracle und kosten Budget.
 Schnittstelle:
     class JumpStrategy
         .name, .next_node(oracle) -> node
-    UniformJump
-    JUMPS: dict[str, type[JumpStrategy]]
+    UniformJump, NameListJump
+    JUMPS: dict[str, Callable[[], JumpStrategy]]
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from functools import partial
+
+import namelists
 
 
 class JumpStrategy(ABC):
@@ -58,6 +62,34 @@ class UniformJump(JumpStrategy):
         return oracle.random_node()
 
 
-JUMPS: dict[str, type[JumpStrategy]] = {
+class NameListJump(JumpStrategy):
+    """Sprung auf einen Knoten aus einer externen Namensliste.
+
+    Ruft dieselbe Methode wie UniformJump -- *wie* gezogen wird, entscheidet
+    das Oracle (oracles.name_list.NameListOracle), nicht diese Klasse. Sie
+    traegt nur den Namen, damit Estimator- und Walk-Schluessel die Quelle
+    ausweisen; sonst hiessen zwei voellig verschiedene Verfahren gleich.
+
+    Anders als UniformJump setzt sie *keine* Kenntnis von V voraus: die Liste
+    ist externes Wissen. Dafuer trifft sie nicht jeden Knoten -- die Abdeckung
+    liegt je nach Graph und Liste bei 8 bis 38 %, und die erreichbare Teilmenge
+    ist gradverzerrt. Was das fuer die Stationaerverteilung bedeutet, steht im
+    Docstring von oracles.name_list.
+    """
+
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.name = f"list-{source}"
+
+    def next_node(self, oracle):
+        return oracle.random_node()
+
+
+# Die Sprungarten. Die Listenquellen kommen aus namelists.SOURCES, damit eine
+# neue Liste nur dort eingetragen werden muss.
+JUMPS: dict[str, Callable[[], JumpStrategy]] = {
     "uniform": UniformJump,
 }
+for _src in sorted(namelists.SOURCES):
+    JUMPS[_src] = partial(NameListJump, source=_src)
+del _src

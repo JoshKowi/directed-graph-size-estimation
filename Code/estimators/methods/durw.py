@@ -39,12 +39,16 @@ Schnittstelle:
 
 from __future__ import annotations
 
+from functools import partial
+
 import numpy as np
 
 import config
+import namelists
 from estimators.formulas import FORMULAS
 from estimators.pipeline import PipelineEstimator
 from oracles.local_access import JumpCrawlOracle
+from oracles.name_list import NameListOracle
 from sampling.durw import DurwSampler
 from sampling.jumps import JUMPS
 from sampling.thinning import THINNINGS
@@ -53,9 +57,15 @@ from weighting.schemes import DurwWeighting, UniformWeighting
 # Jede Sprungart braucht ein Oracle, das sie bedienen kann. Eine spaeter
 # hinzukommende Sprungart, die ihr Ziel aus externen Daten simuliert, traegt
 # hier ihr eigenes Oracle ein -- am Sampler aendert das nichts.
-JUMP_ORACLES: dict[str, type] = {
+JUMP_ORACLES: dict[str, object] = {
     "uniform": JumpCrawlOracle,
 }
+# Die Listenquellen ziehen ueber NameListOracle. Sie brauchen keine Kenntnis
+# von V -- deshalb sind sie in estimators/__init__.py REALIZABLE, waehrend
+# "uniform" COMPARISON bleibt.
+for _src in sorted(namelists.SOURCES):
+    JUMP_ORACLES[_src] = partial(NameListOracle, source=_src)
+del _src
 
 
 def build(
@@ -67,8 +77,16 @@ def build(
     jump_weight: float = config.DURW_JUMP_WEIGHT,
     n_seeds: int = 1,
     burn_in: int = 0,
+    draw_burn_in: int = config.DEFAULT_DRAW_BURN_IN,
+    cost_miss: float = config.COST_DRAW_MISS,
     aggregate=np.median,
 ) -> PipelineEstimator:
+    # `burn_in` verwirft die ersten Schritte des Walks, `draw_burn_in` die
+    # ersten Schritte *nach jedem Sprung* -- zwei verschiedene Dinge, die nicht
+    # verwechselt werden duerfen. Letzteres kennt nur das NameListOracle.
+    oracle_cls = JUMP_ORACLES[jump]
+    if jump != "uniform":
+        oracle_cls = partial(oracle_cls, burn_in=draw_burn_in, cost_miss=cost_miss)
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     weighting = (DurwWeighting(jump_weight) if FORMULAS[formula].weighted
@@ -82,7 +100,7 @@ def build(
         name=f"durw__{formula}__{jump}__{thinning}"
              + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
-        oracle_cls=JUMP_ORACLES[jump],
+        oracle_cls=oracle_cls,
         sampler=DurwSampler(jump=JUMPS[jump](), jump_weight=jump_weight,
                             n_seeds=n_seeds, burn_in=burn_in),
         weighting=weighting,

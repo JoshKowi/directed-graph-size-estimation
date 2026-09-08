@@ -120,6 +120,11 @@ def _row(est_name, category, seed, start, b, budget, run, res, seconds, nested,
         "cached_queries": res.cost.get("cached_queries"),
         "n_random_node": res.cost.get("n_random_node"),
         "n_neighbors": res.cost.get("n_neighbors"),
+        # Nur oracles.name_list zaehlt das: Namen aus der Liste, die der Graph
+        # nicht kennt. Ohne die Spalte waere die tatsaechliche Trefferquote
+        # eines Laufs hinterher nicht nachvollziehbar. Bei allen anderen
+        # Oracles bleibt sie None und landet als NaN in der CSV.
+        "n_draw_miss": res.cost.get("n_draw_miss"),
         "stopped_by": res.cost.get("stopped_by"),
         "seconds": seconds,
         **{f"extra_{k}": v for k, v in res.extra.items()},
