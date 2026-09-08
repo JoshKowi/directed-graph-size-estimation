@@ -3,7 +3,9 @@ bekannten Einstiegsknoten, kein Zugriff auf die Knotenmenge V. Das entspricht
 dem, was sich real crawlen laesst.
 
 Schnittstelle:
-    class CrawlOracle(Oracle)   -- seed_nodes(), neighbors(), degree()
+    class CrawlOracle(Oracle)         -- seed_nodes(), neighbors(), degree()
+    class JumpCrawlOracle(CrawlOracle)     -- zusaetzlich random_node()
+    class InDegreeCrawlOracle(CrawlOracle) -- zusaetzlich in_degree()
 """
 
 from __future__ import annotations
@@ -69,3 +71,40 @@ class JumpCrawlOracle(CrawlOracle):
 
     def random_node(self):
         return self._draw()
+
+
+class InDegreeCrawlOracle(CrawlOracle):
+    """CrawlOracle plus Eingangsgrad -- fuer NMMC (sampling.nmmc).
+
+    NMMC braucht zu jedem vorgeschlagenen Knoten j dessen Eingangsgrad d-(j):
+    er ist die Groesse |S_j| aus Theorem 3.1 des Papers, also die Zahl der
+    Knoten, aus denen die Vorschlagskette in j hineinlaufen kann. Im Paper ist
+    das eine Profilangabe (die Follower-Zahl eines Nutzers), die eine Anfrage
+    ohnehin mitliefert.
+
+    In den Testgraphen hier gibt es diese Angabe nicht: der Eingangsgrad steht
+    nirgends und laesst sich nur global aus allen Kanten ausrechnen
+    (graphs.graph.in_degrees). Dieses Oracle tut also genau das, was ein realer
+    Crawler *nicht* kann -- deshalb ist es die Vergleichsvariante, waehrend
+    sampling.indegree.OnlineInDegree den Wert aus selbst beobachteten Kanten
+    schaetzt und mit dem reinen CrawlOracle auskommt. Die Kategorie vergibt wie
+    ueblich estimators/__init__.py.
+
+    Der Zugriff kostet nichts. Zwei Gruende: er modelliert eine Profilangabe,
+    die im Paper mit der Anfrage mitkommt, und die Variante ist ohnehin nur
+    Vergleich -- ihr Zweck ist zu zeigen, wie NMMC *mit* korrektem d- laeuft,
+    nicht ein faires Budget gegen die realen Verfahren. Die Terminierung
+    beruehrt das nicht: jeder Schritt des Samplers fragt zusaetzlich
+    neighbors(), zahlt also mindestens COST_CACHE_HIT (siehe oracles.base).
+    Aus demselben Grund taucht der Zugriff nicht in `visits` auf --
+    `unique_nodes_used` bleibt so die Zahl der *bezahlt* beruehrten Knoten und
+    zwischen beiden Varianten vergleichbar.
+    """
+
+    @classmethod
+    def prepare(cls, graph) -> None:
+        # Vor dem Fork bauen, sonst je Kindprozess und je Task erneut.
+        graph.in_degrees
+
+    def in_degree(self, u) -> int:
+        return int(self.graph.in_degrees[u])

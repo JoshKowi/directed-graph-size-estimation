@@ -10,6 +10,12 @@ Die Random-Walk-Varianten werden als Kreuzprodukt erzeugt:
     Sackgassen-Strategie (restart | backtrack | history)
   x Umgang mit Abhaengigkeit (none | simple | shifted | margin)
 
+Dieselbe Form haben die beiden Verfahren mit bekannter Verteilung auf der
+gerichteten Sicht: bei DURW steht die Sprungart im ersten Slot, bei NMMC die
+Herkunft des Eingangsgrades (online | exact). Beide entscheiden ueber das
+Oracle und damit ueber die Kategorie -- deshalb stehen sie dort, wo beim
+Random Walk die Sackgassen-Strategie steht.
+
 `margin` steht im selben Namensslot wie das Thinning, ist aber keines: es
 verwirft keine Samples, sondern laesst bei der Kollisionszaehlung Paare aus,
 die im Walk weniger als m+1 Schritte auseinanderliegen (estimators.formulas).
@@ -37,9 +43,10 @@ from functools import partial
 import config
 from estimators.base import Category, Estimator
 from estimators.methods import (capture_recapture, deg_weighted_independent,
-                                durw, random_walk_collision,
+                                durw, nmmc, random_walk_collision,
                                 short_walk_independent, uniform_collision)
 from sampling.dead_ends import DEAD_ENDS
+from sampling.indegree import IN_DEGREES
 from sampling.jumps import JUMPS
 from sampling.thinning import THINNINGS
 
@@ -223,6 +230,73 @@ for _jump in JUMPS:
                     formula=_cf), _cat)
 
 del _jump, _cat, _thinning, _name, _tag, _f, _cf, _w
+
+# -- NMMC: Non-Markovian Monte Carlo (Lee/Kang/Eun 2019) -----------------
+# Rejection auf dem Simple Random Walk: ein abgelehnter Zug absorbiert die
+# Kette, die daraufhin auf ihre eigene gewichtete Historie umverteilt wird
+# (sampling.nmmc). An der Stelle von `dead_end` bzw. `jump` steht hier die
+# Herkunft des Eingangsgrades -- sie entscheidet ueber das Oracle und damit
+# ueber die Kategorie.
+#
+# Der Grund, warum das Verfahren ueberhaupt hier steht: "online" schaetzt d-
+# aus selbst beobachteten Kanten und kommt mit dem reinen CrawlOracle aus.
+# NMMC ist damit das erste Verfahren im Repo mit bekannter Zielverteilung auf
+# der gerichteten Sicht, das *keine* gleichverteilte Ziehung aus V braucht --
+# genau die macht DURW zur Vergleichsvariante. "exact" liest den wahren
+# Eingangsgrad und ist die Gegenprobe dazu: nur mit ihr ist ablesbar, ob ein
+# schlechtes Ergebnis am Verfahren oder an der d--Schaetzung liegt.
+_INDEG_CATEGORY = {"online": Category.REALIZABLE, "exact": Category.COMPARISON}
+
+# Ziel der QSD, zugehoerige Formel und Namenspraefix:
+#   nmmc-uni    -- pi = u, ungewichtet (die Samples sind schon gleichverteilt)
+#   wis-nmmc    -- pi ~ d-, gradkorrigiert (weighting.InDegreeWeighting)
+#   nmmc-indeg  -- dieselben Faenge wie wis-nmmc, aber ohne Gewicht: der Preis
+#                  der Verzerrung, genau wie durw-plain neben wis-durw
+_NMMC_UNI = ("nmmc-uni", "uniform", "uis-collision")
+_NMMC_WIS = ("wis-nmmc", "indeg", "wis-col-katzir")
+_NMMC_RAW = ("nmmc-indeg", "indeg", "uis-collision")
+
+for _indeg in IN_DEGREES:
+    _cat = _INDEG_CATEGORY[_indeg]
+    # Volles Kreuzprodukt mit dem Thinning nur fuer die real umsetzbare
+    # Variante -- "exact" ist die Gegenprobe zur d--Schaetzung, nicht zum
+    # Umgang mit Autokorrelation, und jeder Eintrag multipliziert jeden Lauf.
+    if _indeg == "online":
+        for _thinning in THINNINGS:
+            REGISTRY[f"nmmc-uni__{_indeg}__{_thinning}"] = Entry(
+                partial(nmmc.build, target="uniform", indeg=_indeg,
+                        thinning=_thinning, formula="uis-collision"), _cat)
+            # ohne Thinning heisst der Eintrag nur "wis-nmmc__<indeg>",
+            # analog zu wis-durw__<jump> und wis-katzir__rw-<dead_end>
+            _name = (f"wis-nmmc__{_indeg}" if _thinning == "none"
+                     else f"wis-nmmc__{_indeg}__{_thinning}")
+            REGISTRY[_name] = Entry(
+                partial(nmmc.build, target="indeg", indeg=_indeg,
+                        thinning=_thinning, formula="wis-col-katzir"), _cat)
+    # Safety Margin: vierter Wert im Thinning-Slot, wie oben immer mit
+    # thinning="none".
+    for _tag, _target, _f in (_NMMC_UNI, _NMMC_WIS, _NMMC_RAW):
+        REGISTRY[f"{_tag}__{_indeg}__margin"] = Entry(
+            partial(nmmc.build, target=_target, indeg=_indeg, thinning="none",
+                    margin=config.SAFETY_MARGIN, formula=_f), _cat)
+    # alpha-Sweep wie der w-Sweep bei DURW: bewusst nur auf der
+    # margin-Variante, gefragt ist die Wirkung von alpha, nicht die von
+    # alpha x Thinning x Formel. alpha = NMMC_ALPHA ist mit dabei, obwohl es
+    # dem Eintrag ohne alpha entspricht -- die Plot-Legende liest sich dadurch
+    # einheitlich, und weil beide denselben walk_key haben, kostet der
+    # Doppeleintrag mit --share-walks nichts. Das alpha steht *vor* dem
+    # margin-Slot, damit "...__margin<N>" weiter greift.
+    for _a in config.NMMC_ALPHAS:
+        for _tag, _target, _f in (_NMMC_UNI, _NMMC_WIS):
+            REGISTRY[f"{_tag}__{_indeg}__a{_a:g}__margin"] = Entry(
+                partial(nmmc.build, target=_target, indeg=_indeg,
+                        thinning="none", margin=config.SAFETY_MARGIN,
+                        formula=_f, alpha=_a), _cat)
+
+# _thinning/_name binden nur im "online"-Zweig -- IN_DEGREES fuehrt "online"
+# deshalb zuerst (dict-Reihenfolge ist zugesichert).
+del _indeg, _cat, _thinning, _name, _tag, _target, _f, _a
+del _NMMC_UNI, _NMMC_WIS, _NMMC_RAW
 
 
 def register(name: str, factory: Callable[[], Estimator], category: Category) -> None:

@@ -63,6 +63,7 @@ Schnittstelle:
         .cost() -> dict[str, int]
         .neighbors(u), .degree(u), .random_node(), .seed_nodes(k)
         .mark(), .snapshots, .finalize_checkpoints()
+        .prepare(graph)   (classmethod, vor dem Fork)
 """
 
 from __future__ import annotations
@@ -233,3 +234,15 @@ class Oracle:
     def seed_nodes(self, k: int = 1) -> list:
         """Bekannte Einstiegsknoten (realistischer Startpunkt eines Crawls)."""
         raise NotImplementedError
+
+    # -- Vorbereitung -----------------------------------------------------
+    @classmethod
+    def prepare(cls, graph) -> None:
+        """Was ein Oracle am Graphen braucht, bevor der Runner forkt.
+
+        Default: nichts. Oracles, die eine globale Hilfsstruktur ueber den
+        ganzen Graphen brauchen (oracles.local_access.InDegreeCrawlOracle),
+        bauen sie hier -- sonst entstuende sie in jedem Kindprozess und in
+        jedem Task erneut. Der Runner ruft das je Oracle-Klasse genau einmal
+        auf, vor gc.freeze() (siehe experiment.runner).
+        """

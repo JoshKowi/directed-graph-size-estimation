@@ -193,6 +193,36 @@ DURW_JUMP_WEIGHT = 1.0
 # w=100 -> 0,683 bei 94 % Spruengen).
 DURW_JUMP_WEIGHTS = (0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0)
 
+# --- NMMC (sampling.nmmc) ----------------------------------------------
+# alpha der Gewichtsfolge w_k = k^alpha, mit der die Umverteilung ihre eigene
+# Historie gewichtet. Es ist eine *Gedaechtnislaenge*: alpha = 0 zieht
+# gleichverteilt aus der bisherigen Besuchsfolge (mit Vielfachheit -- der Fall,
+# den sampling.dead_ends.HistoryJump abbildet), grosses alpha zieht fast nur
+# zuletzt besuchte Knoten. Mehr Gewicht auf zuletzt Besuchtem heisst schnellere
+# Diffusion, aber auch weniger Rueckgriff auf die alte Historie, die die
+# Zielverteilung erst aufbaut -- das Paper findet je nach Graph und Ziel-QSD
+# ein anderes Optimum zwischen beidem.
+NMMC_ALPHA = 1.0
+
+# alpha-Werte, fuer die eigene Registry-Eintraege entstehen
+# (estimators/__init__.py: nmmc-uni__<indeg>__a<A>__margin). Genau vier Stueck:
+# zusammen mit den vier Eintraegen im Thinning-Slot trifft
+# "--match nmmc-uni__online__" damit exakt die acht Kurven, die
+# plotting.style.color_for hergibt.
+NMMC_ALPHAS = (0.0, 1.0, 3.0, 10.0)
+
+# p aus Algorithmus 2 des Papers: mit dieser Wahrscheinlichkeit zieht der Walk
+# die laufende Normierung c_t auf das gerade gesehene b_ij hoch, sonst laesst er
+# sie stehen (und nimmt den Zug dann sicher an, weil gamma = min(1, b/c) = 1
+# wird). Kleines p verlangsamt das Wachstum von c_t bewusst: sonst zieht ein
+# einziges grosses b_ij die Annahmequote fuer alle folgenden Schritte nach
+# unten, der Walk verteilt nur noch zwischen bekannten Knoten um und diffundiert
+# nicht mehr. Das Paper misst p = 0,01 als besten Wert; erst p = 0 waere falsch,
+# dort erreicht c_t das wahre c nie und die Konvergenzgarantie faellt.
+NMMC_C_UPDATE_P = 0.01
+
+
+
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
 DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)

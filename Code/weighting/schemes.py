@@ -6,6 +6,8 @@ Schnittstelle:
                                                       needs_degree = True
     class DurwWeighting(WeightingScheme)           -- w_i = 1/(w + deg_Gu(u_i)),
                                                       needs_degree = True
+    class InDegreeWeighting(WeightingScheme)       -- w_i = 1/d-(u_i),
+                                                      needs_degree = True
 """
 
 from __future__ import annotations
@@ -91,3 +93,46 @@ class DurwWeighting(WeightingScheme):
             )
         deg = np.array([s.degree for s in samples], dtype=float)
         return 1.0 / (deg + self.jump_weight)
+
+
+class InDegreeWeighting(WeightingScheme):
+    """Fuer NMMC-Stichproben mit dem Ziel pi(v) ~ d-(v) (sampling.nmmc).
+
+    Bei diesem Ziel kuerzt sich d-(j) aus der Annahmewahrscheinlichkeit heraus,
+    b_ij = d+(i)/d-(i) haengt nur noch an i -- der Grund, warum das Paper es
+    als das deutlich schneller konvergierende Ziel misst. Die Stichprobe ist
+    dafuer proportional zum Eingangsgrad verzerrt, und genau das korrigiert
+    dieses Gewicht. Die Normierung kuerzt der Kollisionsschaetzer heraus
+    (estimators.formulas).
+
+    `Sample.degree` traegt bei NMMC den -- je nach sampling.indegree
+    geschaetzten oder exakten -- **Eingangs**grad, nicht den Ausgangsgrad.
+    Dieselbe Abkuerzung nutzt DURW fuer den G_u-Grad; der frozen dataclass
+    Sample einen eigenen Slot dafuer zu geben, waere fuer alle anderen Sampler
+    toter Ballast.
+
+    Rechnerisch ist das Gewicht identisch mit InverseDegreeWeighting -- der
+    Unterschied steckt allein darin, *welche* Groesse im Sample liegt.
+    Absichern laesst sich das nicht durch Typen, sondern nur ueber den
+    Konstruktionsweg: die Zuordnung Sampler <-> Gewichtung setzt
+    estimators/methods/nmmc.py, so wie es DURW mit DurwWeighting haelt. Einen
+    eigenen Namen bekommt es trotzdem, denn was verschiedene Groessen
+    korrigiert, soll in der Ergebnis-CSV nicht gleich heissen.
+    """
+
+    name = "inv_in_degree"
+    needs_degree = True
+
+    def weights(self, samples: Sequence[Sample]) -> np.ndarray:
+        # Wie bei den anderen Schemata laut melden statt still falsch rechnen.
+        if any(s.degree is None for s in samples):
+            raise ValueError(
+                "InDegreeWeighting braucht Sample.degree (den Eingangsgrad), "
+                "die Stichprobe wurde aber ohne gezogen. NmmcSampler liefert "
+                "ihn immer -- kommt die Stichprobe von einem anderen Sampler, "
+                "passt diese Gewichtung nicht."
+            )
+        # sampling.indegree gibt nie 0 zurueck; das max ist die zweite Schranke
+        # fuer den Fall, dass die Stichprobe doch woanders herkommt.
+        deg = np.array([max(s.degree, 1) for s in samples], dtype=float)
+        return 1.0 / deg

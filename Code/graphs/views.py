@@ -18,6 +18,7 @@ Schnittstelle:
     VIEWS: dict[str, Callable[[Graph], Graph]]
     build_view(graph, view) -> Graph
     class UndirectedView(Graph), class ReverseView(Graph)
+        (beide mit billigerem Graph.in_degrees, s. dort)
 """
 
 from __future__ import annotations
@@ -75,6 +76,14 @@ class ReverseView(Graph):
         indptr, indices = _reverse_csr(base)
         super().__init__(indptr, indices, base.names, base.name)
         self.view = "reverse"
+        self._base_indptr = base.indptr   # nur eine Referenz, s. in_degrees
+
+    @property
+    def in_degrees(self):
+        """Eingangsgrad hier == Ausgangsgrad der Basis -- ohne bincount."""
+        if self._in_degrees is None:
+            self._in_degrees = np.diff(self._base_indptr).astype(ID_DTYPE)
+        return self._in_degrees
 
 
 class UndirectedView(Graph):
@@ -94,6 +103,14 @@ class UndirectedView(Graph):
         indptr, indices = _symmetric_csr(base, dedup=dedup)
         super().__init__(indptr, indices, base.names, base.name)
         self.view = "undirected"
+
+    @property
+    def in_degrees(self):
+        """Symmetrisiert ist jede Kante beidseitig begehbar, also d- == d+.
+        Spart den bincount und dessen int64-Spitze ueber 2|E| Kanten."""
+        if self._in_degrees is None:
+            self._in_degrees = np.diff(self.indptr).astype(ID_DTYPE)
+        return self._in_degrees
 
 
 class DirectedView(Graph):

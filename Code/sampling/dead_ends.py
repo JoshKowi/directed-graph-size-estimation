@@ -93,7 +93,15 @@ class HistoryJump(DeadEndStrategy):
     """Zufaellige Umverteilung auf die History des Walks.
 
     Gezogen wird gleichverteilt aus der bisherigen Besuchsfolge -- mit
-    Vielfachheit, oft besuchte Knoten kommen also entsprechend haeufiger dran - so wie das NMMC fordert.
+    Vielfachheit, oft besuchte Knoten kommen also entsprechend haeufiger dran.
+
+    Das ist genau die Umverteilung von NMMC (sampling.nmmc) im Sonderfall
+    alpha = 0, also mit konstanten Gewichten w_k = 1. Wiederverwenden laesst es
+    sich dort trotzdem nicht: die Signatur hier ist auf den Sackgassenfall
+    zugeschnitten, und O(1) ist die Ziehung nur, weil `trace` die *ganze*
+    Trajektorie haelt. Bei NMMC ist die Umverteilung der Regelfall statt der
+    Ausnahme, die Trajektorie waere dort ein Vielfaches des Budgets lang --
+    sampling.history fuehrt deshalb Gewichte je Knoten statt je Schritt.
     """
 
     name = "history"

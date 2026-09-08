@@ -23,6 +23,7 @@ Schnittstelle:
     class Graph
         .name, .view, .indptr, .indices, .names
         .n_nodes, .n_with_out_edges, .n_edges
+        .in_degrees                   (lazy, s. dort)
         .neighbors(u) -> np.ndarray   (Sicht in `indices`, keine Kopie)
         .degree(u) -> int
         .name_of(u), .id_of(name)
@@ -55,6 +56,7 @@ class Graph:
         self._index: dict | None = None   # lazy, s. id_of()
         self._seed_ids_all: list | None = None  # lazy, s. seed_ids()
         self._seed_ids: list | None = None      # aktive Auswahl, s. restrict_seeds()
+        self._in_degrees = None                 # lazy, s. in_degrees
 
     # -- Groessen ---------------------------------------------------------
     @property
@@ -69,6 +71,29 @@ class Graph:
     @property
     def n_with_out_edges(self) -> int:
         return int(np.count_nonzero(np.diff(self.indptr)))
+
+    @property
+    def in_degrees(self):
+        """Eingangsgrade aller Knoten -- lazy gebaut und an der Instanz gecacht.
+
+        Global berechnet und damit *kein* Crawl-Wissen: wer das benutzt, ist
+        Category.COMPARISON (oracles.local_access.InDegreeCrawlOracle) oder eine
+        Diagnose. Fuer den real umsetzbaren Weg schaetzt
+        sampling.indegree.OnlineInDegree den Wert aus selbst beobachteten Kanten.
+
+        Wie seed_ids() waermt der Runner das Array *vor* dem Fork (siehe
+        experiment.runner): sonst liefe der bincount ueber alle Kanten in jedem
+        Kindprozess und in jedem Task erneut -- bei gpt-4 ueber 96 Mio. Kanten.
+        Als numpy-Puffer ueberlebt es Copy-on-Write (s. Modul-Docstring).
+
+        int32 statt des int64, das bincount liefert: halbiert das Array (gpt-4:
+        73 statt 145 MB) und reicht bis 2,1 Mrd. eingehende Kanten. Die
+        int64-Spitze faellt einmalig im Elternprozess an.
+        """
+        if self._in_degrees is None:
+            self._in_degrees = np.bincount(
+                self.indices, minlength=self.n_nodes).astype(ID_DTYPE)
+        return self._in_degrees
 
     # -- Zugriff ----------------------------------------------------------
     def neighbors(self, u):

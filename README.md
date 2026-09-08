@@ -246,6 +246,9 @@ Code/
   sampling/             wie das Oracle genutzt wird
     samplers.py           UniformSampler, RandomWalkSampler
     durw.py               DURW: Random Walk mit aufgebautem G_u und Sprung
+    nmmc.py               NMMC: Rejection + Umverteilung auf die eigene Historie
+    history.py            gewichtete Besuchshistorie mu_t (Fenwick-Baum)
+    indegree.py           NMMC-Quelle des Eingangsgrades: online | exact
     dead_ends.py          Sackgassen: restart | backtrack | history
     jumps.py              DURW-Sprungarten: uniform
     thinning.py           Dependency Reduction: none | simple | shifted
@@ -290,6 +293,7 @@ Entscheidet ueber die Kategorie: globaler Zugriff setzt Kenntnis von V voraus
 | `ShortWalkIndependentOracle` | `global_access` | Endknoten eines Walks fester Laenge (`steps`) | Walk-Verzerrung, aber unabhaengig | Vergleich |
 | `CrawlOracle` | `local_access` | `seed_nodes()`, `neighbors()` | was der Walk erreicht | real umsetzbar |
 | `JumpCrawlOracle` | `local_access` | wie `CrawlOracle` + `random_node()` | was der Walk erreicht | haengt an der Sprungart (s.u.) |
+| `InDegreeCrawlOracle` | `local_access` | wie `CrawlOracle` + `in_degree()` | was der Walk erreicht | Vergleich (d- ist global gerechnet) |
 
 ### 2. Sampler -- wie daraus eine Stichprobe wird
 
@@ -298,6 +302,7 @@ Entscheidet ueber die Kategorie: globaler Zugriff setzt Kenntnis von V voraus
 | `UniformSampler` | `n_walks` | unabhaengige Ziehungen; `n_walks` > 1 teilt sie in ebenso viele Faenge (Budget gleichmaessig) |
 | `RandomWalkSampler` | `dead_end`, `n_seeds`, `n_walks`, `burn_in`, `restart_prob`, `allow_self_loops` | volle Trajektorie eines (oder `n_walks` nacheinander laufender) Random Walks |
 | `DurwSampler` | `jump`, `jump_weight`, `n_seeds`, `n_walks`, `burn_in` | wie oben, aber DURW: baut waehrend des Laufs ein ungerichtetes G_u auf und springt gradproportional |
+| `NmmcSampler` | `target`, `indeg`, `alpha`, `c_update_p`, `n_seeds`, `burn_in` | NMMC: nimmt einen vorgeschlagenen Zug nur mit `gamma_ij` an und verteilt sonst auf die eigene gewichtete Historie um |
 
 ### 3. Sackgassen-Strategie -- nur fuer den Random Walk
 
@@ -349,6 +354,118 @@ und schätzt um die Hälfte zu klein. Für den Vergleich gibt es deshalb die Rei
 (0,1 / 0,3 / 1 / 3 / 10 / 30 / 100 — sieben Werte, passend zu den höchstens acht
 Kurven je Bild). Den Sprunganteil eines Laufs liefert die Ergebnis-CSV ohne
 Zusatzarbeit: `n_random_node / extra_n_samples`.
+### 3c. NMMC -- Umverteilung statt Sprung
+
+DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also
+mit genau der Kenntnis von V, die geschaetzt werden soll -- das macht es zur
+Vergleichsvariante, und der Versuch, den Sprung aus externen Titellisten zu
+emulieren (`Code/title_overlap.py`), scheiterte an 23-38 % Abdeckung.
+NMMC (Lee/Kang/Eun 2019) loest dasselbe Problem ohne jede Ziehung aus V: es
+verteilt ausschliesslich auf **bereits besuchte** Knoten um.
+
+Aufbau: Vorschlagskette ist der Simple Random Walk, `Q_ij = 1/d+(i)`. Ein Zug
+wird mit `gamma_ij` angenommen; sonst wird die Kette in einem kuenstlichen
+Zustand absorbiert und sofort auf die eigene gewichtete Besuchshistorie
+`mu_t` umverteilt (`sampling/history.py`, Gewichte `w_k = k^alpha`). Der
+Prozess ist dadurch nicht mehr markovsch, und `mu_t` konvergiert gegen die
+**quasi-stationaere** Verteilung der absorbierenden Kette. Mit
+
+    b_ij = (pi(j)/pi(i)) * d+(i)/d-(j),   gamma_ij = min(1, b_ij/c)
+
+ist `pi P = (1/c) pi`, `pi` also die QSD. Herleitung im Docstring von
+`sampling/nmmc.py`. Der Preis fuer den Verzicht auf den Sprung ist der
+**Eingangsgrad** `d-(j)`.
+
+| `indeg` | d- kommt aus | braucht | Kategorie |
+|---|---|---|---|
+| `online` | selbst beobachteten Kanten (Paper, 6.3) | nur `CrawlOracle` | **real umsetzbar** |
+| `exact` | `graphs.graph.in_degrees` | `InDegreeCrawlOracle.in_degree()` | Vergleich |
+
+`nmmc-uni__online__*` ist damit das erste Verfahren hier mit bekannter
+Zielverteilung auf der gerichteten Sicht, das in `Category.REALIZABLE` faellt.
+`exact` ist die Gegenprobe: nur mit ihr ist trennbar, ob ein schlechtes
+Ergebnis am Verfahren oder an der d--Schaetzung liegt.
+
+**Der Sampler ist nachweislich korrekt.** Auf einem kleinen, stark
+zusammenhaengenden Zufallsgraphen (|V| = 200, |E| = 1000, exaktes d-, alpha = 1)
+faellt die Total Variation Distance zwischen `mu_t` und dem Ziel monoton:
+
+| t | 10^4 | 10^5 | 10^6 | 10^7 | Steigung log-log |
+|---|---|---|---|---|---|
+| Ziel `u` | 0.234 | 0.159 | 0.115 | 0.079 | -0.156 |
+| Ziel `d-` | 0.181 | 0.099 | 0.066 | 0.044 | -0.201 |
+
+Kein Plateau, und die Steigung liegt im vom Paper genannten Bereich
+`O(t^-theta)` mit `theta <= 1/2` (Benaim/Cloez). Nur ist das eben *polynomiell*
+und nicht exponentiell -- und daran haengt alles Weitere.
+
+**Was das Verfahren hier bremst.** Gemessen mit `nmmc_trace.py` auf
+Slashdot0811 gerichtet, Budget 5 %, Median ueber 5 Laeufe:
+
+| `indeg` / `target` | Annahmequote | Anteil d- = 1 | c_t / c | Schritte |
+|---|---|---|---|---|
+| `exact` / `indeg` | **0.543** | 0.030 | 0.006 | 10 211 |
+| `exact` / `uniform` | 0.023 | 0.029 | 0.077 | 131 120 |
+| `online` / `indeg` | 0.066 | 0.050 | 0.155 | 55 170 |
+| `online` / `uniform` | 0.047 | 0.159 | 0.214 | 69 808 |
+
+Drei Befunde:
+
+1. **Die Umverteilung ist der Regelfall, nicht die Ausnahme.** Ausser bei
+   `exact`/`indeg` werden ueber 93 % der Schritte abgelehnt. Eine Umverteilung
+   landet immer auf einem schon geholten Knoten und kostet damit nur
+   `COST_CACHE_HIT` -- der Lauf macht also ein Vielfaches des Budgets an
+   Schritten (131 000 bei Budget 3868), sammelt dabei aber fast nur
+   Wiederholungen aus einer kleinen Region. Genau deshalb fuehrt
+   `sampling/history.py` Gewichte je *Knoten* statt je Schritt: die
+   Trajektorie waere hundertmal so lang wie die Zahl verschiedener Knoten.
+2. **`c_t` erreicht das wahre `c` nie** (0,006 bis 0,21). Solange das so ist,
+   greift die Kappung `gamma = 1` und die QSD ist noch gar nicht die
+   Zielverteilung. Die Verzerrung haengt damit am Budget statt am Verfahren --
+   das gehoert in jede Interpretation der Kurven ueber dem Budget.
+3. **Die Online-Schaetzung von d- ist lokal, nicht global.** Auf Slashdot ist
+   der Median von `b_ij` ueber alle Kanten mit wahrem d- gerade 1,09 -- mit
+   d- = 1 dagegen 58, bei unveraendertem Maximum 2507. Nach einem Lauf mit
+   Budget 5 % stehen 51,6 % der als Kantenziel gesehenen Knoten noch auf dem
+   Boden 1, der Median von `d^-/d-` liegt bei 0,20. Ueber die tatsaechlichen
+   Vorschlaege gewichtet sind es nur 16 % -- ein verfangener Walk beobachtet
+   die Kanten seiner eigenen Region immer wieder und schaetzt dort brauchbar.
+   Die Schaetzung ist also gut im besuchten Kern und gleich 1 an seinem Rand;
+   verzerrt wird gerade das, was die Abdeckung vergroessern wuerde. Im
+   Grenzfall d- = 1 ueberall bliebe `b_ij = d+(i)` und die Kette waere
+   `P = A/c` -- Korollar 3.3 des Papers, dessen QSD die
+   *Eigenvektorzentralitaet* ist und nicht die Zielverteilung.
+
+**Sackgassen** (bis 53 % der Knoten) sind bei NMMC Absorption mit
+Wahrscheinlichkeit 1: `Q_srw` ist dort gar nicht definiert. Die Sackgasse wird
+dabei besucht, bemustert und traegt QSD-Masse -- sie faellt also nicht aus der
+Stichprobe. Was verlorengeht, ist die Irreduzibilitaet: der linke
+Perron-Vektor lebt nur auf der dominanten Komponente plus deren
+Vorwaerts-Abschluss, `mu_t` konvergiert also gegen die QSD eingeschraenkt auf
+die vom Start erreichbare Menge. **NMMC schaetzt `|supp mu|`, nicht `|V|`** --
+dieselbe Lage wie bei `wis-katzir__indep` (siehe "Entwurfsentscheidungen",
+Punkt 3). Die Vorschlagskette aus 6.4 des Papers, die das ueber einen Sprung
+auf die Einstiegsmenge loesen wuerde, ist bewusst nicht uebernommen: dort
+bekommt jeder Knoten eine Sprungkante, `|S_j|` ist dann nicht mehr `d-(j)`,
+sondern haengt an `|V|`.
+
+`alpha` steht in `config.NMMC_ALPHA` (Default 1.0), `p` in
+`config.NMMC_C_UPDATE_P` (0.01, das Optimum des Papers). Fuer den Vergleich
+gibt es die Reihe `{nmmc-uni,wis-nmmc}__<indeg>__a<A>__margin` ueber
+`config.NMMC_ALPHAS` (0 / 1 / 3 / 10 -- vier Werte; zusammen mit den vier
+Eintraegen im Thinning-Slot trifft `--match nmmc-uni__online__` damit genau die
+acht Kurven, die ein Bild traegt).
+
+**Was die Ergebnis-CSV hergibt und was nicht.** Bei `burn_in = 0` ist
+`extra_n_samples` die Schrittzahl, und `unique_nodes_used / extra_n_samples`
+ist eine *untere* Schranke der Annahmequote, `cached_queries /
+extra_n_samples` eine *obere* Schranke des Umverteilungsanteils. Die Luecke
+dazwischen -- angenommene Zuege auf bereits bekannte Knoten -- ist dort per
+Konstruktion unsichtbar. Sie zu messen ist der Zweck von `nmmc_trace.py`:
+
+```bash
+python nmmc_trace.py --graph slashdot --runs 10 --budget 0.05 --jobs 8
+```
 
 ### 4. Thinning -- aus der Trajektorie werden Sample-Sets
 
@@ -374,6 +491,8 @@ Wird von den `build()`-Funktionen automatisch nach der Formel gewaehlt
 |---|---|---|
 | `UniformWeighting` | `w_i = 1` | gleichverteilten Stichproben |
 | `InverseDegreeWeighting` | `w_i = 1/deg(u_i)` | Stichproben mit pi(u) ~ deg(u) (Random Walk, DWI) |
+| `DurwWeighting` | `w_i = 1/(w + deg_Gu(u_i))` | DURW-Stichproben (`Sample.degree` = G_u-Grad) |
+| `InDegreeWeighting` | `w_i = 1/d-(u_i)` | NMMC mit Ziel pi ~ d- (`Sample.degree` = Eingangsgrad) |
 
 ### 6. Formel -- die Zahl
 
@@ -418,6 +537,10 @@ die Namen:
 | `capture-recapture__uniform[__<formel>]` | Uniform | Uniform(`n_walks`) | by-walk | dieselben fuenf |
 | `durw-plain__<jump>__<none\|simple\|shifted\|margin[N]>` | JumpCrawl | DURW | alle drei (+ Margin) | `uis-collision` |
 | `wis-durw__<jump>[__<simple\|shifted\|margin[N]>]` | JumpCrawl | DURW | alle drei (+ Margin) | `wis-col-katzir` |
+| `nmmc-uni__<indeg>__<none\|simple\|shifted\|margin[N]>` | Crawl / InDegreeCrawl | NMMC (Ziel `u`) | alle drei (+ Margin) | `uis-collision` |
+| `wis-nmmc__<indeg>[__<simple\|shifted\|margin[N]>]` | Crawl / InDegreeCrawl | NMMC (Ziel `d-`) | alle drei (+ Margin) | `wis-col-katzir` |
+| `nmmc-indeg__<indeg>__margin[N]` | Crawl / InDegreeCrawl | NMMC (Ziel `d-`) | none + Margin | `uis-collision` |
+| `{nmmc-uni,wis-nmmc}__<indeg>__a<A>__margin` | Crawl / InDegreeCrawl | NMMC, `alpha`-Sweep | none + Margin | je nach Praefix |
 | `wis-durw__<jump>__w<W>__margin` | JumpCrawl | DURW (Sprunggewicht `W`) | none + Margin | `wis-col-katzir` |
 | `capture-recapture__durw-<jump>[__<formel>]` | JumpCrawl | DURW(`n_walks`) | by-walk | dieselben fuenf |
 
@@ -928,6 +1051,7 @@ gar nicht erst ab (`UniformSampler(with_degree=False)`, gesetzt aus
 |---|---|
 | Random Walk (`rw-*`, `capture-recapture__<dead_end>`) | 1 -- Grad faellt beim Schritt mit ab |
 | DURW (`durw-*`, `wis-durw__*`) | 1 je Schritt (Grad faellt mit ab), plus 1 (`COST_RANDOM_NODE`) je Sprung -- im Mittel `w/(w + deg_Gu)` der Schritte |
+| NMMC (`nmmc-*`, `wis-nmmc__*`) | 1 je Schritt auf einen neuen Knoten, `COST_CACHE_HIT` je Umverteilung -- und die ist der Regelfall, siehe "3c. NMMC" |
 | `*__walk5` | 1 -- die Antwort bringt die Nachbarliste mit |
 | uniformes Ziehen ohne Gradgewichtung | 1 -- nur die Ziehung |
 | uniformes Ziehen **mit** Gradgewichtung (`wis-katzir__indep`, `*__cross-wis`) | 2 -- Ziehung + Gradabfrage |

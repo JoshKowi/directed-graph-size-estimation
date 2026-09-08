@@ -54,6 +54,14 @@ SLOTS = {
     "rw-plain__restart__none": 1,
     "rw-plain__backtrack__none": 3,
     "rw-plain__history__none": 5,
+    # NMMC: eine feste Farbe je Ziel, hell/dunkel-Paare gibt es nicht --
+    # die d--Quelle (online/exact) steht deshalb nie mit demselben Ziel in
+    # derselben Grafik, sondern nebeneinander in einer Zeile.
+    "wis-durw__uniform__margin": 2,
+    "nmmc-uni__online__margin": 4,
+    "nmmc-uni__exact__margin": 6,
+    "wis-nmmc__online__margin": 7,
+    "wis-nmmc__exact__margin": 3,
 }
 COLORS = {e: color_for(i) for e, i in SLOTS.items()}
 
@@ -75,6 +83,15 @@ FIGURES = [
      [REFERENCE, "rw-plain__restart__none", "rw-plain__backtrack__none",
       "rw-plain__history__none"], ["directed"],
      "UIS collision counting with a random walk -- dead-end strategies (directed)"),
+    # NMMC gegen DURW: beide haben auf der gerichteten Sicht eine bekannte
+    # Zielverteilung, aber NMMC kommt ohne Ziehung aus V aus. Die
+    # exact-Varianten trennen das Verfahren von der d--Schaetzung (s. README,
+    # "3c. NMMC").
+    ("nmmc_vs_durw__directed",
+     [REFERENCE, "wis-durw__uniform__margin", "nmmc-uni__online__margin",
+      "wis-nmmc__online__margin", "nmmc-uni__exact__margin",
+      "wis-nmmc__exact__margin"], ["directed"],
+     "NMMC vs DURW -- known target distribution on the directed view"),
 ]
 
 

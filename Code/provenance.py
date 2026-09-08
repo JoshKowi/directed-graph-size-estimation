@@ -222,6 +222,27 @@ def _results_readme() -> str:
                 + "` (`Code/walk_sinks.py`).",
                 "",
             ]
+        elif kind == "nmmc_trace":
+            parts += [
+                f"NMMC-Diagnose auf **{label}** (`{graph}`), {_num(len(df))} Zeilen "
+                "(= View x d--Quelle x Ziel x Lauf). Misst, was die Ergebnis-CSV "
+                "nicht hergibt: `acc_rate` (angenommen / vorgeschlagen), "
+                "`frac_dinhat_1`, `c_final`/`c_max`, `redist_share`, `dead_ends`. "
+                "Dazu die Schranken, die auch ohne dieses Skript ablesbar waeren "
+                "(`acc_rate_lower`, `redist_share_upper`) -- ihr Abstand zum "
+                "gemessenen Wert ist der Grund fuer das Skript.",
+                "",
+                f"- Views: {', '.join(sorted(df['view'].unique()))}",
+                f"- d--Quelle: {', '.join(sorted(df['indeg'].unique())) if 'indeg' in df else '?'}",
+                f"- Ziel: {', '.join(sorted(df['target'].unique())) if 'target' in df else '?'}",
+                f"- alpha: {', '.join(f'{a:g}' for a in sorted(df['alpha'].unique())) if 'alpha' in df else '?'}",
+                f"- Seed: {seed}",
+                "",
+                f"Erzeugt mit `python nmmc_trace.py --graph {graph}"
+                + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                + "` (`Code/nmmc_trace.py`).",
+                "",
+            ]
         else:
             parts += [f"{_num(len(df))} Zeilen.", ""]
     parts += [
@@ -330,6 +351,15 @@ def _plots_readme() -> str:
                       f"--graph {graph}"
                       + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
                       + "` (`Code/walk_sinks.py`).", ""]
+        elif slug == "nmmc-trace":
+            parts += [f"NMMC-Diagnose auf **{label}** (Seed {seed}): Annahmequote, "
+                      "Anteil der Vorschlaege mit geschaetztem Eingangsgrad 1, und "
+                      "wie weit die gelernte Normierung c_t an das wahre c "
+                      "herangekommen ist -- je Variante aus d--Quelle x "
+                      "Zielverteilung. Erzeugt mit `python nmmc_trace.py "
+                      f"--graph {graph}"
+                      + ("" if seed == config.DEFAULT_SEED else f" --seed {seed}")
+                      + "` (`Code/nmmc_trace.py`).", ""]
         elif slug == "ranges":
             parts += [f"Uebersicht fuer **{label}** (Seed {seed}): "
                       "Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit "

@@ -70,6 +70,7 @@ import multiprocessing as mp
 import random
 import time
 from collections import Counter
+from functools import partial
 
 import pandas as pd
 
@@ -213,6 +214,12 @@ def run_graph(
         # names ist bei 18 Mio. Knoten sonst in jedem Kindprozess erneut faellig
         # (siehe graphs.graph.seed_ids).
         view.seed_ids()
+        # Aus demselben Grund, was die Oracles sonst noch am Graphen brauchen:
+        # InDegreeCrawlOracle baut hier seinen Eingangsgrad-Vektor, statt in
+        # jedem Kindprozess und in jedem Task erneut (siehe oracles.base.prepare).
+        for _cls in {getattr(e, "oracle_cls", None) for e in estimators}:
+            if _cls is not None:
+                (_cls.func if isinstance(_cls, partial) else _cls).prepare(view)
         log(f"[{graph.name}/{view_name}] View gebaut in {time.perf_counter()-t0:.1f}s "
             f"-- |V|={_n(true_size)}, Kanten={_n(view.n_edges)}")
 
