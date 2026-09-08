@@ -188,7 +188,11 @@ del _dead_end, _thinning, _cf
 # bis 38 % abdecken, ist eine Frage der Guete, nicht der Umsetzbarkeit; was
 # das fuer die Stationaerverteilung bedeutet, steht in oracles/name_list.py.
 _JUMP_CATEGORY = {"uniform": Category.COMPARISON}
-_JUMP_CATEGORY.update({_s: Category.REALIZABLE for _s in namelists.SOURCES})
+# Die In-Grad-Listen stammen aus dem Graphen selbst und sind deshalb
+# COMPARISON, nicht REALIZABLE -- namelists.NameList.realizable sagt es.
+_JUMP_CATEGORY.update({
+    _s: (Category.REALIZABLE if _l.realizable else Category.COMPARISON)
+    for _s, _l in namelists.SOURCES.items()})
 
 for _jump in ("uniform",):
     _cat = _JUMP_CATEGORY[_jump]

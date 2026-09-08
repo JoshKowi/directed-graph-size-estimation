@@ -57,17 +57,16 @@ def _log(msg: str) -> None:
 
 
 def build(graph, source: str, log=_log):
-    """(Array, Metadaten) fuer einen Graphen und eine Quelle."""
+    """(Array, Metadaten) fuer einen Graphen und eine Quelle.
+
+    Rechnet dieselben Quoten wie namelists.overlap, baut aber zusaetzlich das
+    Array -- deshalb hier eine eigene Schleife statt eines Aufrufs: overlap()
+    haelt nur Zaehler, hier braucht es je Position den Treffer.
+    """
     src = namelists.resolve(source)
 
     t0 = time.perf_counter()
-    lookup: dict[str, int] = {}
-    for i, k in enumerate(graph.names):
-        if isinstance(k, str):
-            # Bei Kollisionen gewinnt der erste Knoten. Willkuerlich, aber
-            # deterministisch -- und die Zahl steht unten im Protokoll, damit
-            # sichtbar bleibt, wie oft es vorkommt.
-            lookup.setdefault(src.norm.apply(k), i)
+    lookup = namelists.name_lookup(graph, src.norm)
     n_named = sum(1 for k in graph.names if isinstance(k, str))
     log(f"  Knotenindex: {len(lookup):,} verschiedene Namen aus {n_named:,} "
         f"({n_named - len(lookup):,} durch Normalisierung zusammengefallen) "
@@ -75,8 +74,6 @@ def build(graph, source: str, log=_log):
 
     t0 = time.perf_counter()
     out: list[int] = []
-    # Wie oft welcher Kandidat den Treffer gebracht hat -- bei top-q zeigt das,
-    # ob die Reihenfolge enwiki -> dewiki -> label ueberhaupt etwas beitraegt.
     by_rank: dict[int, int] = {}
     empty = 0
     for cands in src.entries():
@@ -101,6 +98,8 @@ def build(graph, source: str, log=_log):
         "path": str(src.path),
         "normalizer": src.norm.label(),
         "columns": list(src.columns),
+        "limit": src.limit,
+        "realizable": src.realizable,
         "n_entries": int(arr.size),
         "n_hits": n_hit,
         "n_nodes": int(graph.n_nodes),
@@ -117,8 +116,8 @@ def build(graph, source: str, log=_log):
         f"Treffer {meta['titles_matched']:.2%}, Abdeckung "
         f"{meta['nodes_covered']:.2%}, {meta['draws_per_hit']:.1f} Ziehungen "
         f"je Treffer")
-    if src.columns:
-        log(f"  Treffer nach Kandidat: "
+    if src.columns and not all(isinstance(c, int) for c in src.columns):
+        log("  Treffer nach Kandidat: "
             + ", ".join(f"{src.columns[int(r)]}={n:,}"
                         for r, n in meta["hits_by_candidate_rank"].items()))
     return arr, meta
