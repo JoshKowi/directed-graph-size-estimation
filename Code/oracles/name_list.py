@@ -95,7 +95,17 @@ def available(graph_name: str) -> list[str]:
 
 
 class NameListOracle(Oracle):
-    """Ziehung aus einer externen Namensliste, mit Rejection und Burn-in."""
+    """Ziehung aus einer externen Namensliste, mit Rejection und Burn-in.
+
+    `limit` nimmt nur die ersten n Eintraege der Liste. Sinnvoll, weil die
+    Quellen nach Relevanz sortiert sind (top-q nach QRank, die In-Grad-Listen
+    nach Eingangsgrad): ein Praefix ist dort "die n prominentesten Entitaeten".
+    Der Index ist positionsbasiert, das Abschneiden also ein Slice -- es braucht
+    je (Graph, Quelle) trotzdem nur *einen* Index, nicht einen je Laenge.
+
+    Laengere Liste heisst mehr erreichbare Knoten *und* mehr Fehlschlaege; wo
+    der Handel kippt, zeigen die Kurven aus plotting/name_coverage.py.
+    """
 
     @classmethod
     def prepare(cls, graph) -> None:
@@ -112,7 +122,7 @@ class NameListOracle(Oracle):
         for source in available(graph.name):
             load_index(graph.name, source)
 
-    def __init__(self, *args, source: str,
+    def __init__(self, *args, source: str, limit: int | None = None,
                  burn_in: int = config.DEFAULT_DRAW_BURN_IN,
                  cost_miss: float = config.COST_DRAW_MISS, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -129,6 +139,20 @@ class NameListOracle(Oracle):
         self.cost_miss = float(cost_miss)
         self.n_draw_miss = 0
         self._index = load_index(self.graph.name, source)
+        if limit is not None:
+            if limit > len(self._index):
+                raise ValueError(
+                    f"limit={limit:,} ist groesser als der Index "
+                    f"{self.graph.name}/{source} mit {len(self._index):,} "
+                    "Eintraegen -- laut statt still die volle Liste zu nehmen, "
+                    "sonst waere ein Lauf mit zu grossem limit nicht von einem "
+                    "ohne limit zu unterscheiden.".replace(",", " ")
+                )
+            # Ein Slice auf einem numpy-Array ist ein *View*: kein zusaetzlicher
+            # Speicher, und das gecachte Array bleibt das, was prepare() vor dem
+            # Fork geladen hat (Copy-on-Write bleibt heil).
+            self._index = self._index[:limit]
+        self.limit = limit
         self._n = len(self._index)
         if self._n == 0 or not bool((self._index != MISS).any()):
             # Passiert z.B. bei Graphen mit numerischen Knotennamen

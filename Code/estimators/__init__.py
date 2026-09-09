@@ -256,16 +256,27 @@ del _jump, _cat, _thinning, _name, _tag, _f, _cf, _w
 # Bewusst kein Kreuzprodukt ueber Thinnings und Formeln: gefragt ist die
 # Wirkung der Ziehung, nicht die von Ziehung x Thinning x Formel. Wer mehr
 # braucht, ruft die build()-Funktionen direkt auf.
+# `n<N>` ist die Listenlaenge: nur die ersten N Eintraege der (nach Relevanz
+# sortierten) Quelle. Sie steht *vor* dem margin-Slot, damit "...__margin<N>"
+# weiter aufgeloest wird -- dieselbe Stellung wie beim w-Sweep. Ohne `n<N>`
+# meint der Eintrag die volle Liste.
+#
+# Laengere Liste heisst mehr erreichbare Knoten *und* mehr Fehlschlaege; wo der
+# Handel kippt, zeigen die Kurven aus plotting/name_coverage.py. Genau diese
+# Achse faehrt der Sweep ab.
 for _src in sorted(namelists.SOURCES):
     _cat = _JUMP_CATEGORY[_src]
     for _b in config.DRAW_BURN_INS:
-        REGISTRY[f"namelist-{_src}__b{_b}"] = Entry(
-            partial(name_list_collision.build, source=_src, draw_burn_in=_b,
-                    formula="uis-collision"), _cat)
-        REGISTRY[f"durw-{_src}__b{_b}__margin"] = Entry(
-            partial(durw.build, jump=_src, thinning="none", draw_burn_in=_b,
-                    margin=config.SAFETY_MARGIN, formula="wis-col-katzir"), _cat)
-del _src, _cat, _b
+        for _n in (None,) + tuple(config.DRAW_LIMITS):
+            _tag = f"__n{_n}" if _n else ""
+            REGISTRY[f"namelist-{_src}{_tag}__b{_b}"] = Entry(
+                partial(name_list_collision.build, source=_src, draw_burn_in=_b,
+                        draw_limit=_n, formula="uis-collision"), _cat)
+            REGISTRY[f"durw-{_src}{_tag}__b{_b}__margin"] = Entry(
+                partial(durw.build, jump=_src, thinning="none", draw_burn_in=_b,
+                        draw_limit=_n, margin=config.SAFETY_MARGIN,
+                        formula="wis-col-katzir"), _cat)
+del _src, _cat, _b, _n, _tag
 
 # -- NMMC: Non-Markovian Monte Carlo (Lee/Kang/Eun 2019) -----------------
 # Rejection auf dem Simple Random Walk: ein abgelehnter Zug absorbiert die
@@ -281,7 +292,15 @@ del _src, _cat, _b
 # genau die macht DURW zur Vergleichsvariante. "exact" liest den wahren
 # Eingangsgrad und ist die Gegenprobe dazu: nur mit ihr ist ablesbar, ob ein
 # schlechtes Ergebnis am Verfahren oder an der d--Schaetzung liegt.
-_INDEG_CATEGORY = {"online": Category.REALIZABLE, "exact": Category.COMPARISON}
+# "cross-*" holt den Eingangsgrad aus dem Partnergraphen (config.CROSS_GRAPHS).
+# Das ist externes Wissen ueber Entitaeten und keine Kenntnis der Knotenmenge
+# des geschaetzten Graphen -- dieselbe Begruendung, die die Namenslisten real
+# umsetzbar macht. Damit sind sie die *realistische* Fassung von "exact", und
+# die eigentliche Frage der Achse: traegt ein fremder, unvollstaendiger Prior
+# das Verfahren dort, wo die reine Online-Schaetzung es nicht tut?
+_INDEG_CATEGORY = {"online": Category.REALIZABLE, "exact": Category.COMPARISON,
+                   "cross-one": Category.REALIZABLE,
+                   "cross-online": Category.REALIZABLE}
 
 # Ziel der QSD, zugehoerige Formel und Namenspraefix:
 #   nmmc-uni    -- pi = u, ungewichtet (die Samples sind schon gleichverteilt)
@@ -322,7 +341,10 @@ for _indeg in IN_DEGREES:
     # einheitlich, und weil beide denselben walk_key haben, kostet der
     # Doppeleintrag mit --share-walks nichts. Das alpha steht *vor* dem
     # margin-Slot, damit "...__margin<N>" weiter greift.
-    for _a in config.NMMC_ALPHAS:
+    # alpha-Sweep nur fuer online und exact: alpha steuert die Umverteilung,
+    # nicht die d--Quelle -- die Frage ist auf zwei Quellen beantwortet, eine
+    # dritte und vierte Reihe kostete nur weitere 16 Walks.
+    for _a in (config.NMMC_ALPHAS if _indeg in ("online", "exact") else ()):
         for _tag, _target, _f in (_NMMC_UNI, _NMMC_WIS):
             REGISTRY[f"{_tag}__{_indeg}__a{_a:g}__margin"] = Entry(
                 partial(nmmc.build, target=_target, indeg=_indeg,
@@ -369,6 +391,29 @@ def build(name: str) -> Estimator:
     est.name = name
     est.category = entry.category  # Label erst hier, nach der Konstruktion
     return est
+
+
+def applicable(ests: list, graph_name: str) -> tuple[list, list[str]]:
+    """Estimators aufteilen in "laeuft auf diesem Graphen" und "nicht".
+
+    Manche Oracles setzen etwas am Graphen voraus, das es nicht ueberall gibt
+    -- CrossInDegreeCrawlOracle braucht einen Partnergraphen
+    (config.CROSS_GRAPHS). Ein Lauf ueber die *ganze* Registry soll daran nicht
+    scheitern, sondern die betroffenen Verfahren abwaehlen und das sagen. Wer
+    sie namentlich anfordert, bekommt weiterhin den lauten Fehler beim Bauen
+    des Oracles.
+
+    Rueckgabe: (anwendbare Estimators, Namen der uebersprungenen).
+    """
+    ok, skipped = [], []
+    for e in ests:
+        cls = getattr(e, "oracle_cls", None)
+        cls = getattr(cls, "func", cls)          # partial aufloesen, s. pipeline
+        if cls is not None and not cls.applicable(graph_name):
+            skipped.append(e.name)
+        else:
+            ok.append(e)
+    return ok, skipped
 
 
 def names(category: Category | None = None) -> list[str]:

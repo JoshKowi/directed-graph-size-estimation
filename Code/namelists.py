@@ -152,15 +152,31 @@ SOURCES: dict[str, NameList] = {
         config.ADDITIONALS_DIR / "enwiki-latest-all-titles-in-ns0.txt",
         VARIANTS["+whitespace"],
         note="Titel der englischen Wikipedia (ns0, inkl. Weiterleitungen)"),
-    # Die 100 000 nach QRank hoechstplatzierten Wikidata-Entitaeten. Drei
-    # Schreibweisen je Entitaet, englisch zuerst: die Testgraphen tragen
-    # englische Namen, das dewiki-Feld ist die Rueckfalloption und das
-    # Wikidata-Label die letzte.
+    # Die 1 Mio nach QRank hoechstplatzierten Wikidata-Entitaeten. Die Datei
+    # traegt drei Schreibweisen je Entitaet (label, dewiki_title,
+    # enwiki_title); benutzt wird nur *eine* -- eine Entitaet, ein Name.
+    #
+    # Warum `label`: einzeln gemessen gegen beide Graphen, surplus bei
+    # n = 1k / 10k / 100k / 1M
+    #
+    #                  gpt4_io                      gpt4o_io
+    #   enwiki_title   10,70  16,92  28,44  51,69   22,00  28,59  41,60  67,34
+    #   dewiki_title   30,20  42,48  59,12  78,62   42,70  51,23  65,17  84,09
+    #   label          17,20  18,55  25,86  43,91   24,70  28,06  37,58  60,21
+    #
+    # Die Rangfolge kippt mit der Listenlaenge: bei kurzen Listen gewinnt der
+    # Wikipedia-Titel, ab rund 10k bis 50k Eintraegen das Label -- bei 1 Mio um
+    # 7 bis 8 Prozentpunkte, und dort auch mit der hoeheren Abdeckung (7,79
+    # gegen 7,43 % bzw. 6,16 gegen 5,73 %). Der Grund duerfte sein, dass die
+    # Spitze der QRank-Liste prominente Artikel mit passenden Titeln enthaelt,
+    # weiter hinten aber Wikipedia-Konventionen dazukommen ("Heartbeat
+    # (Ryuichi Sakamoto album)"), waehrend das Label der schlichte Name bleibt
+    # -- und die GPT-Graphen benutzen den schlichten Namen.
     "top-q": NameList(
         config.ADDITIONALS_DIR / "top-q-entities",
         _LABEL_NORM,
-        columns=("enwiki_title", "dewiki_title", "label"),
-        note="Top-100k-Wikidata-Entitaeten nach QRank"),
+        columns=("label",),
+        note="Top-1M-Wikidata-Entitaeten nach QRank (Spalte label)"),
 }
 
 # In-Grad-Listen: "<eingangsgrad>\t<name>", ohne Kopfzeile, absteigend sortiert,

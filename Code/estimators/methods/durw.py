@@ -78,6 +78,7 @@ def build(
     n_seeds: int = 1,
     burn_in: int = 0,
     draw_burn_in: int = config.DEFAULT_DRAW_BURN_IN,
+    draw_limit: int | None = None,
     cost_miss: float = config.COST_DRAW_MISS,
     aggregate=np.median,
 ) -> PipelineEstimator:
@@ -86,7 +87,8 @@ def build(
     # verwechselt werden duerfen. Letzteres kennt nur das NameListOracle.
     oracle_cls = JUMP_ORACLES[jump]
     if jump != "uniform":
-        oracle_cls = partial(oracle_cls, burn_in=draw_burn_in, cost_miss=cost_miss)
+        oracle_cls = partial(oracle_cls, burn_in=draw_burn_in,
+                             cost_miss=cost_miss, limit=draw_limit)
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     weighting = (DurwWeighting(jump_weight) if FORMULAS[formula].weighted
@@ -98,6 +100,7 @@ def build(
         # ueber die Registry ist der Name ohnehin kosmetisch (estimators.build()
         # ueberschreibt ihn), fuer Direktaufrufe aus einem Notebook nicht.
         name=f"durw__{formula}__{jump}__{thinning}"
+             + (f"__n{draw_limit}" if draw_limit else "")
              + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=oracle_cls,

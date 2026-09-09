@@ -231,6 +231,37 @@ NMMC_ALPHAS = (0.0, 1.0, 3.0, 10.0)
 # dort erreicht c_t das wahre c nie und die Konvergenzgarantie faellt.
 NMMC_C_UPDATE_P = 0.01
 
+# Partnergraph fuer die kreuzweise In-Grad-Schaetzung
+# (sampling.indegree.CrossInDegree): fuer einen Lauf auf gpt4_io liefert
+# gpt4o_io die Eingangsgrade und umgekehrt. Die beiden GPT-Basen teilen sich
+# den Schluesselraum -- es sind Entitaetsnamen, keine IDs -- und beschreiben
+# dieselbe Welt aus zwei Erhebungen. Damit ist der Partner *externes* Wissen
+# ueber die Entitaeten, aber keine Kenntnis der Knotenmenge des geschaetzten
+# Graphen: dieselbe Begruendung, die auch die Namenslisten real umsetzbar
+# macht.
+#
+# Grenze des Arguments: die Paare sind sich aehnlich, weil sie aus verwandten
+# Modellen stammen. Der Partner ist deshalb ein *guter* Prior, aber kein
+# Beleg, dass beliebiges Fremdwissen so gut traegt.
+CROSS_GRAPHS = {
+    "gpt4_io": "gpt4o_io",
+    "gpt4o_io": "gpt4_io",
+    "adjacency_list_uni": "gpt4o_adj_from_dataset",
+    "gpt4o_adj_from_dataset": "adjacency_list_uni",
+}
+
+
+def cross_graph(name: str) -> str | None:
+    """Partnergraph, oder None wenn keiner hinterlegt ist."""
+    return CROSS_GRAPHS.get(resolve_graph(name))
+
+
+# Vorab gebaute In-Grad-Indizes: je (Graph, Partner) ein int32-Array, das zu
+# jeder Knoten-ID den Eingangsgrad derselben Entitaet im Partnergraphen haelt
+# (-1 = dort nicht vorhanden). Abgeleitet und jederzeit neu baubar
+# (build_indeg_index.py), deshalb nicht versioniert.
+INDEG_INDEX_DIR = ROOT / "data" / "indeg_index"
+
 
 # Budgets relativ zur wahren Graph-Groesse |V|, z.B. 0.001 == 0.1 %.
 # Fuer grosse Graphen siehe DEFAULT_BUDGETS_LARGE weiter unten.
@@ -291,6 +322,15 @@ DEFAULT_DRAW_BURN_IN = 0
 # Schritt kostet eine Nachbarabfrage, und nach wenigen Schritten dominiert
 # ohnehin die Verteilung des Walks statt die der Liste.
 DRAW_BURN_INS = (0, 1, 2, 5, 10)
+
+# Listenlaengen, fuer die eigene Registry-Eintraege entstehen
+# (durw-<quelle>__n<N>__b<B>__margin). Die Quellen sind nach Relevanz sortiert
+# -- top-q nach QRank, die In-Grad-Listen nach Eingangsgrad -- ein Praefix ist
+# dort also "die n prominentesten Entitaeten".
+#
+# Der Namensindex ist positionsbasiert, das Abschneiden damit ein Slice: es
+# braucht je (Graph, Quelle) *einen* Index, nicht einen je Laenge.
+DRAW_LIMITS = (1_000, 10_000, 100_000, 1_000_000)
 
 # Ein Cache-Treffer ist billig, aber nicht gratis: ein realer Crawler haelt die
 # einmal geholte Nachbarschaft, muss sie aber weiterhin nachschlagen. Der Preis

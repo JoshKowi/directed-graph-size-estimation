@@ -40,6 +40,7 @@ from weighting.schemes import InverseDegreeWeighting, UniformWeighting
 def build(
     source: str = "enwiki",
     draw_burn_in: int = config.DEFAULT_DRAW_BURN_IN,
+    draw_limit: int | None = None,
     cost_miss: float = config.COST_DRAW_MISS,
     formula: str = "uis-collision",
     margin: int = 0,
@@ -48,12 +49,14 @@ def build(
     weighting = (InverseDegreeWeighting() if FORMULAS[formula].weighted
                  else UniformWeighting())
     return PipelineEstimator(
-        name=f"namelist-{source}__b{draw_burn_in}__{formula}"
+        name=f"namelist-{source}"
+             + (f"__n{draw_limit}" if draw_limit else "")
+             + f"__b{draw_burn_in}__{formula}"
              + (f"__m{margin}" if margin else ""),
         # PipelineEstimator ruft oracle_cls(graph, rng, budget, metric) auf --
         # Quelle, Burn-in und Fehlschlagpreis kommen ueber partial dazu, und
         # pipeline._oracle_key loest das fuer den Walk-Schluessel wieder auf.
-        oracle_cls=partial(NameListOracle, source=source,
+        oracle_cls=partial(NameListOracle, source=source, limit=draw_limit,
                            burn_in=draw_burn_in, cost_miss=cost_miss),
         sampler=UniformSampler(with_degree=weighting.needs_degree),
         weighting=weighting,
