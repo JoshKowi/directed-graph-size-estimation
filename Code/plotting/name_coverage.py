@@ -37,12 +37,26 @@ import config  # noqa: E402
 from plotting.style import (GRID, INK, INK_MUTED, SURFACE,  # noqa: E402
                             apply_axes_style, color_for)
 
-#: Schluessel -> (Achsenbeschriftung, Erklaerung fuer den Untertitel)
+#: Schluessel -> (Achsenbeschriftung, Erklaerung, y-Achse logarithmisch?)
+#
+# coverage laeuft ueber sechs Zehnerpotenzen -- von einem einzelnen Knoten
+# (1/|V|, rund 1.5e-5 %) bis in den zweistelligen Prozentbereich. Linear
+# aufgetragen waere davon nur das letzte Zehntel der Achse sichtbar. Deshalb
+# dort log.
+#
+# surplus lebt dagegen von Anfang an im Prozentbereich und hat sein Minimum
+# irgendwo zwischen 5 und 20 % -- die Frage ist, *wo* es liegt und wie schnell
+# es danach steigt. Das liest sich linear besser: gleiche Abstaende sind
+# gleiche Prozentpunkte, und der Abstand zwischen zwei Kurven ist direkt der
+# Unterschied im Ausschuss. Ausserdem faellt der 0-%-Anfang der In-Grad-Listen
+# nicht weg.
 METRICS = {
     "coverage": ("coverage: share of |V| reached",
-                 "distinct graph nodes hit by the first n entries, over |V|"),
+                 "distinct graph nodes hit by the first n entries, over |V|",
+                 True),
     "surplus": ("surplus: share of entries without a match",
-                "entries among the first n with no counterpart in the graph"),
+                "entries among the first n with no counterpart in the graph",
+                False),
 }
 
 #: Senkrechte Stuetzlinien -- die Dekaden, an denen abgelesen wird.
@@ -60,10 +74,11 @@ def _decade_limits(vals: np.ndarray) -> tuple[float, float]:
 
 
 def plot_curve(curves: dict, graph_name: str, metric: str,
-               path: Path | None = None, logy: bool = True) -> Path:
+               path: Path | None = None, logy: bool | None = None) -> Path:
     """Ein Diagramm. `curves` ist {Beschriftung: Rueckgabe von coverage_curve}.
 
-    `logy` ist Default, weil beide Groessen ueber mehrere Zehnerpotenzen
+    `logy=None` nimmt den Default der Groesse (s. METRICS): log fuer coverage,
+    linear fuer surplus. Begruendung fuer coverage: beide Groessen laufen
     laufen: coverage beginnt bei einem einzelnen Knoten (1/|V|, also rund
     1.5e-5 %) und endet im zweistelligen Prozentbereich. Linear aufgetragen
     waere davon nur das letzte Zehntel der Achse sichtbar, und der Verlauf
@@ -78,7 +93,9 @@ def plot_curve(curves: dict, graph_name: str, metric: str,
     """
     if metric not in METRICS:
         raise ValueError(f"metric {metric!r} -- moeglich: {sorted(METRICS)}")
-    ylabel, explain = METRICS[metric]
+    ylabel, explain, default_logy = METRICS[metric]
+    if logy is None:
+        logy = default_logy
 
     fig, ax = plt.subplots(figsize=(8.2, 5.0))
     fig.patch.set_facecolor(SURFACE)
