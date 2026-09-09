@@ -285,3 +285,76 @@ def resolve(name: str) -> NameList:
             "versioniert."
         )
     return src
+
+
+def coverage_curve(graph, source, checkpoints, lookup: dict[str, int] | None = None
+                   ) -> dict:
+    """coverage und surplus je Praefixlaenge -- in *einem* Durchlauf.
+
+    overlap() an 300 Praefixen aufzurufen hiesse, die Datei 300-mal zu streamen.
+    Hier laeuft sie einmal, und an jedem Checkpoint werden nur zwei Zaehler
+    abgelesen: die Groesse der Menge getroffener Knoten und die Zahl der Treffer.
+
+    Beantwortet die Frage, wie viele Eintraege sich lohnen. Beide Groessen
+    wachsen mit n, aber gegenlaeufig im Nutzen:
+
+        coverage(n) = verschiedene getroffene Knoten / |V|
+                      steigt monoton -- Knoten kommen nur dazu
+        surplus(n)  = (n - Treffer(n)) / n
+                      der Anteil der bisher betrachteten Eintraege ohne
+                      Entsprechung im Graphen, also der Preis der Ziehung
+
+    `checkpoints` muss aufsteigend sein; der Durchlauf endet beim letzten. Die
+    In-Grad-Listen haben 5,7 bzw. 6,5 Mio Eintraege, gebraucht wird davon oft
+    nur ein Praefix.
+
+    Die Trefferregel ist dieselbe wie in overlap() und build_name_index: je
+    Eintrag die Kandidaten in Prioritaetsreihenfolge, erster Treffer gewinnt.
+    """
+    src = resolve(source) if isinstance(source, str) else source
+    if lookup is None:
+        lookup = name_lookup(graph, src.norm)
+
+    marks = [int(c) for c in checkpoints if c >= 1]
+    if not marks:
+        raise ValueError("checkpoints ist leer (oder enthaelt nur Werte < 1)")
+    if any(b <= a for a, b in zip(marks, marks[1:])):
+        raise ValueError("checkpoints muessen streng aufsteigend sein")
+
+    n_arr, cov, sur, hit_arr, node_arr = [], [], [], [], []
+    seen: set[int] = set()
+    hits = 0
+    nv = graph.n_nodes
+    pos = 0                      # naechster Checkpoint
+    i = 0
+
+    for i, cands in enumerate(src.entries(), start=1):
+        for c in cands:
+            found = lookup.get(c)
+            if found is not None:
+                hits += 1
+                seen.add(found)
+                break
+        # while, nicht if: mehrere Checkpoints koennen zusammenfallen, wenn die
+        # Liste kuerzer ist als die Achse -- dann muessen alle den Endstand
+        # bekommen.
+        while pos < len(marks) and marks[pos] == i:
+            n_arr.append(i)
+            cov.append(len(seen) / nv)
+            sur.append((i - hits) / i)
+            hit_arr.append(hits)
+            node_arr.append(len(seen))
+            pos += 1
+        if pos >= len(marks):
+            break
+
+    return {
+        "n": n_arr,
+        "coverage": cov,
+        "surplus": sur,
+        "n_hits": hit_arr,
+        "n_nodes_hit": node_arr,
+        "n_nodes": nv,
+        "n_entries_seen": i,
+        "exhausted": pos < len(marks),   # Liste war kuerzer als die Achse
+    }
