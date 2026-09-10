@@ -36,8 +36,25 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
+from matplotlib.colors import LogNorm, Normalize  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+
 import config  # noqa: E402
 from plotting.style import INK, INK_MUTED, SURFACE, apply_axes_style, color_for  # noqa: E402
+
+# Symbole fuer --jump-colours: dort traegt die Farbe die Sprungzahl, die
+# Zugehoerigkeit zur Datenreihe muss also die Form uebernehmen. Acht Symbole,
+# passend zu den acht Farbslots in plotting.style -- mehr Reihen sind in einem
+# Panel ohnehin nicht auseinanderzuhalten.
+JUMP_MARKERS = ("o", "s", "^", "D", "v", "P", "X", "*")
+
+#: Sequentielle Farbskala fuer die Sprungzahl. Perzeptuell gleichabstaendig und
+#: auch in Graustufen monoton -- anders als die kategoriale PALETTE, die hier
+#: nichts zu suchen hat: Sprungzahlen sind geordnet, Estimators nicht.
+JUMP_CMAP = "viridis"
+
+#: Breite, die --jump-colours zusaetzlich braucht (Balken + Skala + Titel).
+CBAR_INCHES = 1.35
 
 
 # Ab wie vielen Budgets die Spalte breiter wird, und um wie viel Zoll je
@@ -106,8 +123,25 @@ def plot_comparison(
     path: Path | None = None,
     colors: dict[str, str] | None = None,
     note: str | None = None,
+    jump_colours: bool = False,
 ):
-    """summary: DataFrame aus experiment.results.summarize()."""
+    """summary: DataFrame aus experiment.results.summarize().
+
+    `jump_colours` legt die Farbe auf die *Zahl der Zufallsziehungen* um
+    (Spalte `jumps_median`, aus `n_random_node`): bei DURW die Spruenge, bei
+    oracles.name_list die erfolgreichen Ziehungen. Die Zugehoerigkeit zur
+    Datenreihe traegt dann das Symbol statt der Farbe -- beides gleichzeitig
+    ginge nicht, eine Achse muss weichen.
+
+    Gedacht fuer den w-Sweep: `w` steuert ueber w/(w + deg_Gu(v)), wie oft
+    DURW springt, und die Sprungrate ist der Grund, warum derselbe Schaetzer
+    auf gpt4o_io schon bei 0,5 % Budget trifft und auf gpt4_io bei 10 % noch
+    nicht. Mit dieser Ansicht steht die Ursache im selben Bild wie die Wirkung.
+
+    Gefaerbt wird die *absolute* Zahl, nicht die Rate -- deshalb die
+    logarithmische Skala: ueber die Budgets hinweg waechst sie um Groessen-
+    ordnungen, innerhalb eines Budgets trennt sie die Verfahren.
+    """
     summary = summary[(summary["graph"] == graph_name)
                       & (summary["estimator"].isin(estimators))
                       & (summary["view"].isin(views))]
@@ -121,7 +155,13 @@ def plot_comparison(
     # Zwei Estimators in derselben Farbe waeren im Bild nicht auseinander zu
     # halten -- lieber hier scheitern als eine unlesbare Grafik ausliefern.
     used = [colors[e] for e in estimators]
-    if len(set(used)) != len(used):
+    if jump_colours and len(estimators) > len(JUMP_MARKERS):
+        raise ValueError(
+            f"--jump-colours unterscheidet die Reihen ueber {len(JUMP_MARKERS)} "
+            f"Symbole, hier sind es {len(estimators)} Estimators. Teilmenge "
+            "waehlen (--estimators / --match)."
+        )
+    if not jump_colours and len(set(used)) != len(used):
         dupes = sorted({c for c in used if used.count(c) > 1})
         raise ValueError(
             f"Farbkollision in {title!r}: {dupes} doppelt vergeben. "
@@ -132,8 +172,31 @@ def plot_comparison(
     # zweizeiligen x-Labels (relativ + absolut) nebeneinander, danach ruecken
     # sie zusammen und werden unleserlich. Statt sie zu drehen oder zu kuerzen
     # bekommt die Grafik je weiterem Budget ein Stueck Breite dazu.
+    norm = sm = None
+    if jump_colours:
+        if "jumps_median" not in summary.columns:
+            raise ValueError(
+                "Spalte jumps_median fehlt -- die Ergebnisse stammen aus einer "
+                "Version vor n_random_node. Ohne sie gibt es nichts zu faerben."
+            )
+        vals = summary["jumps_median"].dropna()
+        vals = vals[vals > 0]
+        if vals.empty:
+            raise ValueError(
+                "Keine positiven Sprungzahlen -- die gewaehlten Estimators "
+                "ziehen gar nicht zufaellig (n_random_node = 0)."
+            )
+        # Eine Normierung fuer *alle* Panels: sonst hiesse dieselbe Farbe in
+        # zwei Spalten Verschiedenes.
+        lo, hi = float(vals.min()), float(vals.max())
+        norm = (LogNorm(lo, hi) if hi / lo >= 10 else Normalize(lo, hi))
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=JUMP_CMAP)
+
     panel_width = 6.6 + PANEL_GROWTH * max(0, len(budgets) - BUDGETS_PER_PANEL)
-    fig_width = panel_width * len(views)
+    # Die Farbleiste bekommt eigene Breite, statt den Panels welche wegzunehmen:
+    # sonst schrumpfen die Datenpanels und die Legende laeuft rechts aus dem
+    # Bild. CBAR_INCHES deckt Balken plus Beschriftung ab.
+    fig_width = panel_width * len(views) + (CBAR_INCHES if jump_colours else 0.0)
     fig, axes = plt.subplots(1, len(views), figsize=(fig_width, 4.6),
                              sharey=True, squeeze=False)
     fig.patch.set_facecolor(SURFACE)
@@ -152,10 +215,20 @@ def plot_comparison(
                     .set_index("budget_rel").reindex(budgets))
             rel = lambda col: rows[col] / rows["true_size"]  # noqa: E731
             xi = x + (0.10 * i - span / 2)
-            ax.vlines(xi, rel("est_min"), rel("est_max"),
-                      color=colors[est], linewidth=2, alpha=0.75, zorder=3)
-            ax.plot(xi, rel("est_median"), "o", markersize=8, color=colors[est],
-                    markeredgecolor=SURFACE, markeredgewidth=2, label=est, zorder=4)
+            if jump_colours:
+                # Die Spanne bleibt neutral: sie hat keine eigene Sprungzahl,
+                # und eingefaerbt wuerde sie den Punkt uebertoenen.
+                ax.vlines(xi, rel("est_min"), rel("est_max"),
+                          color=INK_MUTED, linewidth=1.6, alpha=0.35, zorder=3)
+                ax.scatter(xi, rel("est_median"), c=rows["jumps_median"],
+                           cmap=JUMP_CMAP, norm=norm, marker=JUMP_MARKERS[i],
+                           s=110, edgecolors=SURFACE, linewidths=1.5, zorder=4)
+            else:
+                ax.vlines(xi, rel("est_min"), rel("est_max"),
+                          color=colors[est], linewidth=2, alpha=0.75, zorder=3)
+                ax.plot(xi, rel("est_median"), "o", markersize=8, color=colors[est],
+                        markeredgecolor=SURFACE, markeredgewidth=2, label=est,
+                        zorder=4)
 
         ax.axhline(1.0, color=INK_MUTED, linewidth=1, linestyle=(0, (4, 3)), zorder=2)
         ax.set_yscale("log")
@@ -182,7 +255,17 @@ def plot_comparison(
     if note:
         fig.text(0.99, 0.985, note, color=INK_MUTED, fontsize=9, ha="right", va="top")
 
-    handles, labels = axes[0][0].get_legend_handles_labels()
+    if jump_colours:
+        # scatter() legt keine brauchbaren Legendeneintraege an (die Farbe je
+        # Punkt ist verschieden) -- deshalb Platzhalter, die nur die Form
+        # zeigen, in neutralem Grau.
+        handles = [Line2D([], [], linestyle="none", marker=JUMP_MARKERS[i],
+                          markersize=8, color=INK_MUTED,
+                          markeredgecolor=SURFACE, markeredgewidth=1.2)
+                   for i in range(len(estimators))]
+        labels = list(estimators)
+    else:
+        handles, labels = axes[0][0].get_legend_handles_labels()
     legend_top = 0.985 - 0.042 * (wrapped.count("\n") + 1) - 0.01
     fig.legend(handles, labels, frameon=False, fontsize=9, labelcolor=INK_MUTED,
                ncol=min(len(labels), 3), loc="upper left",
@@ -190,7 +273,18 @@ def plot_comparison(
                columnspacing=1.4)
 
     n_legend_rows = -(-len(labels) // min(len(labels), 3))
-    fig.tight_layout(rect=(0, 0, 1, legend_top - 0.07 * n_legend_rows))
+    right = 1.0 - (CBAR_INCHES / fig_width if jump_colours else 0.0)
+    fig.tight_layout(rect=(0, 0, right, legend_top - 0.07 * n_legend_rows))
+    if jump_colours:
+        # In Figur-Koordinaten: der Balken sitzt im reservierten Streifen, die
+        # Beschriftung passt rechts daneben.
+        cax = fig.add_axes([right + 0.22 / fig_width, 0.16,
+                            0.16 / fig_width, 0.58])
+        cb = fig.colorbar(sm, cax=cax)
+        cb.set_label("random draws per run (median)", color=INK_MUTED, fontsize=9)
+        cb.ax.tick_params(colors=INK_MUTED, labelsize=8)
+        cb.outline.set_edgecolor(INK_MUTED)
+        cb.outline.set_linewidth(0.6)
 
     if path is None:
         config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)

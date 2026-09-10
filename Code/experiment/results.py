@@ -25,9 +25,17 @@ Sampler), sind die alten Zeilen nicht mehr vergleichbar. Dafuer gibt es
 naechste Lauf neue Dateien. Die Spalte `code` in jeder Zeile haelt fest,
 welche Codeversion sie erzeugt hat.
 
+Die Besuchs-CSV (`kind="visits"`, nur mit `--visits`) faellt aus diesem Schema
+heraus: sie wird nie deduped oder umsortiert, waechst pro Lauf um zig Mio
+Zeilen und wird von keiner Auswertung automatisch gelesen. `append_visits`
+haengt nur an und beginnt bei `config.VISITS_MAX_BYTES` eine Teildatei
+(`<graph>__...visits.2.csv`, `.3.csv`, ...). `parse_stem` fasst die Serie
+wieder als `kind="visits"` zusammen.
+
 Schnittstelle:
     RUN_KEYS, run_keys(df) -> set
     append_results(df, graph_name, kind, seed, start) -> Path
+    append_visits(df, graph_name, seed, start, replace=False) -> Path
     deprecate(reason=None) -> Path | None
     seed_tag(seed) -> str
     start_tag(graph, start_node) -> str
@@ -111,6 +119,7 @@ def parse_stem(stem: str) -> tuple[str, int, str | None, str]:
     m = re.match(r"start-([a-z0-9-]+)__(.*)", rest)
     if m:
         start, rest = m.group(1), m.group(2)
+    rest = re.sub(r"^(visits)\.\d+$", r"\1", rest)   # visits.2 -> visits (Teildatei)
     return graph, seed, start, rest
 
 
@@ -172,6 +181,42 @@ def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
     if sort_by:
         combined = combined.sort_values(sort_by, na_position="first")
     combined.reset_index(drop=True).to_csv(path, index=False)
+    return path
+
+
+def _visits_series(base: Path) -> list[Path]:
+    """Alle Teildateien einer Besuchs-CSV, aufsteigend:
+    <stem>visits.csv, <stem>visits.2.csv, <stem>visits.3.csv, ..."""
+    parts = [base] if base.exists() else []
+    for p in base.parent.glob(base.stem + ".*.csv"):
+        if re.fullmatch(re.escape(base.stem) + r"\.\d+", p.stem):
+            parts.append(p)
+    return sorted(parts,
+                  key=lambda p: 1 if p == base else int(p.stem.rsplit(".", 1)[1]))
+
+
+def append_visits(df: pd.DataFrame, graph_name: str, seed: int | None = None,
+                  start=None, replace: bool = False) -> Path:
+    """Besuchszeilen anhaengen -- ohne die (mehrere GB grosse) Datei neu
+    einzulesen, umzusortieren oder zu deduplizieren.
+
+    Bei `visits` ist beides sinnlos: die Zeilen sind Knoten-Besuchszaehler ohne
+    `run`-Spalte, Reihenfolge und Dubletten spielen keine Rolle und nichts liest
+    die Datei automatisch. Ueberschreitet die aktuelle Teildatei
+    `config.VISITS_MAX_BYTES`, beginnt die naechste (`...visits.2.csv`,
+    `.3.csv`, ...). `replace=True` loescht die ganze Serie vorher.
+    """
+    config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    base = _path(graph_name, "visits", seed, start)
+    if replace:
+        for p in _visits_series(base):
+            p.unlink()
+    parts = _visits_series(base)
+    path = parts[-1] if parts else base
+    if path.exists() and path.stat().st_size >= config.VISITS_MAX_BYTES:
+        nxt = 2 if path == base else int(path.stem.rsplit(".", 1)[1]) + 1
+        path = base.with_name(base.stem + f".{nxt}.csv")
+    df.to_csv(path, mode="a", index=False, header=not path.exists())
     return path
 
 
@@ -283,6 +328,12 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
         df = df.assign(start_node="<zufaellig>")
     if "walk_group" not in df.columns:
         df = df.assign(walk_group=None)
+    # Zahl der Zufallsziehungen je Lauf: bei DURW die Spruenge, bei
+    # oracles.name_list die *erfolgreichen* Ziehungen (Fehlschlaege stehen in
+    # n_draw_miss). Frames aus einer Version vor der Spalte bekommen NaN --
+    # plot_results.py --jump-colours meldet das dann, statt still zu faerben.
+    if "n_random_node" not in df.columns:
+        df = df.assign(n_random_node=float("nan"))
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
@@ -307,6 +358,8 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             used_median=("queries_used", "median"),
             used_min=("queries_used", "min"),
             used_max=("queries_used", "max"),
+            # fuer plot_comparison(jump_colours=True)
+            jumps_median=("n_random_node", "median"),
         )
         .reset_index()
     )
