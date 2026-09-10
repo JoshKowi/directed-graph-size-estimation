@@ -58,7 +58,8 @@ import provenance
 from experiment import results as results_io
 from graphs import loader
 from graphs.views import VIEWS, build_view
-from oracles.local_access import CrawlOracle, InDegreeCrawlOracle
+from oracles.local_access import (CrawlOracle, CrossInDegreeCrawlOracle,
+                                  InDegreeCrawlOracle)
 from sampling.indegree import IN_DEGREES
 from sampling.nmmc import TARGETS, NmmcSampler
 
@@ -66,16 +67,32 @@ KIND = "nmmc_trace"
 
 # Dieselbe Zuordnung wie in estimators/methods/nmmc.py -- dort ist sie die
 # Wahrheit, hier nur nachgezogen, damit die Diagnose ohne Registry auskommt.
-INDEG_ORACLES = {"online": CrawlOracle, "exact": InDegreeCrawlOracle}
+INDEG_ORACLES = {"online": CrawlOracle, "exact": InDegreeCrawlOracle,
+                 "cross-one": CrossInDegreeCrawlOracle,
+                 "cross-online": CrossInDegreeCrawlOracle}
 
 
-def true_c(view, target: str) -> float:
-    """Das wahre c = max b_ij, gegen das c_t laeuft.
+def true_c(view, target: str, indeg: str) -> float:
+    """Das wahre c = max b_ij, gegen das c_t laeuft -- NaN, wo es keines gibt.
 
-    Global gerechnet und damit nur als Diagnose zulaessig -- der Sampler selbst
+    Global gerechnet und damit nur als Diagnose zulaessig; der Sampler selbst
     kennt es nie, er lernt c_t unterwegs (Algorithmus 2 des Papers).
+
+    Entscheidend: c haengt an den Eingangsgraden, die der Sampler *tatsaechlich
+    benutzt*, nicht an den wahren. Fuer `exact` sind das die echten, fuer
+    `cross-one` die des Partners mit Boden 1 -- beides steht vorab fest. Bei
+    `online` und `cross-online` haengt der Nenner dagegen am bisherigen Lauf;
+    ein festes c existiert dort gar nicht, und eine Quote dagegen waere frei
+    erfunden. Deshalb NaN statt einer Zahl, die man versehentlich liest.
     """
-    d_in = np.maximum(view.in_degrees, 1).astype(float)
+    if indeg in ("online", "cross-online"):
+        return float("nan")
+    if indeg == "cross-one":
+        from oracles.local_access import CrossInDegreeCrawlOracle
+        idx = CrossInDegreeCrawlOracle._index(view)
+        d_in = np.maximum(np.where(idx < 0, 1, idx), 1).astype(float)
+    else:
+        d_in = np.maximum(view.in_degrees, 1).astype(float)
     d_out = np.diff(view.indptr).astype(float)
     if target == "indeg":
         # b haengt nur an i; Knoten ohne Ausgangskanten schlagen nie vor.
@@ -144,14 +161,15 @@ def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
     for view_name in args.views:
         view = build_view(graph, view_name)
         view.seed_ids()                     # vor dem Fork aufloesen
-        if "exact" in args.indeg:
-            InDegreeCrawlOracle.prepare(view)   # ebenso (s. oracles.base.prepare)
+        for _ind in args.indeg:                 # ebenso (s. oracles.base.prepare)
+            INDEG_ORACLES[_ind].prepare(view)
         if start is not None:
             view.restrict_seeds([start])
         budget_abs = max(int(round(args.budget * view.n_nodes)), 2)
         start_col = (str(start) if start is not None
                      else ("<mixed>" if config.seed_nodes(graph.name) else "<zufaellig>"))
-        c_true = {t: true_c(view, t) for t in args.target}
+        c_true = {(t, i): true_c(view, t, i)
+                  for t in args.target for i in args.indeg}
 
         tasks = [
             (run_idx,
@@ -170,7 +188,7 @@ def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
             results = [_run_one(t) for t in tasks]
 
         for r in results:
-            r["c_max"] = c_true[r["target"]]
+            r["c_max"] = c_true[(r["target"], r["indeg"])]
             r["c_ratio"] = r["c_final"] / r["c_max"]
             rows.append({
                 "graph": graph.name, "view": view_name, "seed": args.seed,
@@ -183,9 +201,11 @@ def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
             for target in args.target:
                 sel = [r for r in results if r["indeg"] == indeg and r["target"] == target]
                 med = lambda k: float(np.median([r[k] for r in sel]))  # noqa: E731
-                print(f"  [{graph.name}/{view_name}] {indeg:6s} {target:7s} "
+                ratio = med("c_ratio")
+                ratio_s = f"{ratio:6.3f}" if ratio == ratio else "     -"
+                print(f"  [{graph.name}/{view_name}] {indeg:12s} {target:7s} "
                       f"Annahme {med('acc_rate'):6.3f}  d-=1 bei {med('frac_dinhat_1'):6.3f}  "
-                      f"c_t/c {med('c_ratio'):6.3f}  Schritte {med('steps'):,.0f}"
+                      f"c_t/c {ratio_s}  Schritte {med('steps'):,.0f}"
                       .replace(",", " "))
 
     df = pd.DataFrame(rows).sort_values(

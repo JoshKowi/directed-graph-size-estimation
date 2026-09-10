@@ -10,9 +10,12 @@ bekannter Zielverteilung, das mit dem reinen CrawlOracle auskommt.
 
 Die austauschbaren Achsen:
 
-    indeg       -- "online" | "exact" (sampling.indegree); an die Stelle von
-                   `dead_end` bzw. `jump` getreten. Entscheidet ueber das
-                   Oracle und damit ueber die Kategorie.
+    indeg       -- "online" | "exact" | "cross-one" | "cross-online"
+                   (sampling.indegree); an die Stelle von `dead_end` bzw.
+                   `jump` getreten. Entscheidet ueber das Oracle und damit
+                   ueber die Kategorie. Die cross-Varianten holen den
+                   Eingangsgrad aus dem Partnergraphen (config.CROSS_GRAPHS)
+                   und gibt es nur fuer die Graphen, die dort einen haben.
     target      -- "uniform" (pi = u) | "indeg" (pi ~ d-). Das Ziel bestimmt
                    die Annahmewahrscheinlichkeit *und* die noetige Gewichtung.
     alpha       -- Gedaechtnis der Umverteilung, w_k = k^alpha
@@ -47,7 +50,8 @@ import numpy as np
 import config
 from estimators.formulas import FORMULAS
 from estimators.pipeline import PipelineEstimator
-from oracles.local_access import CrawlOracle, InDegreeCrawlOracle
+from oracles.local_access import (CrawlOracle, CrossInDegreeCrawlOracle,
+                                  InDegreeCrawlOracle)
 from sampling.indegree import IN_DEGREES
 from sampling.nmmc import NmmcSampler
 from sampling.thinning import THINNINGS
@@ -58,6 +62,10 @@ from weighting.schemes import InDegreeWeighting, UniformWeighting
 INDEG_ORACLES: dict[str, type] = {
     "online": CrawlOracle,
     "exact": InDegreeCrawlOracle,
+    # Der Partnergraph ist externes Wissen, kein Zugriff auf V des
+    # geschaetzten Graphen -- beide cross-Varianten bleiben real umsetzbar.
+    "cross-one": CrossInDegreeCrawlOracle,
+    "cross-online": CrossInDegreeCrawlOracle,
 }
 
 

@@ -354,6 +354,7 @@ und schätzt um die Hälfte zu klein. Für den Vergleich gibt es deshalb die Rei
 (0,1 / 0,3 / 1 / 3 / 10 / 30 / 100 — sieben Werte, passend zu den höchstens acht
 Kurven je Bild). Den Sprunganteil eines Laufs liefert die Ergebnis-CSV ohne
 Zusatzarbeit: `n_random_node / extra_n_samples`.
+
 ### 3c. NMMC -- Umverteilung statt Sprung
 
 DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also
@@ -380,6 +381,46 @@ ist `pi P = (1/c) pi`, `pi` also die QSD. Herleitung im Docstring von
 |---|---|---|---|
 | `online` | selbst beobachteten Kanten (Paper, 6.3) | nur `CrawlOracle` | **real umsetzbar** |
 | `exact` | `graphs.graph.in_degrees` | `InDegreeCrawlOracle.in_degree()` | Vergleich |
+| `cross-one` | dem **Partnergraphen**, Fehltreffer -> 1 | `CrossInDegreeCrawlOracle` | **real umsetzbar** |
+| `cross-online` | dem Partnergraphen, Fehltreffer -> Online-Schaetzung | `CrossInDegreeCrawlOracle` | **real umsetzbar** |
+
+Die beiden `cross`-Varianten holen den Eingangsgrad aus einem *anderen*
+Graphen, der dieselben Entitaeten beschreibt: fuer einen Lauf auf gpt4_io
+liefert gpt4o_io die Grade und umgekehrt (`config.CROSS_GRAPHS`). Beide GPT-
+Basen teilen sich den Schluesselraum -- es sind Entitaetsnamen, keine IDs.
+
+Warum das real umsetzbar ist und `exact` nicht: der Partner ist **externes
+Wissen ueber Entitaeten**, keine Kenntnis der Knotenmenge des geschaetzten
+Graphen. Wer gpt4_io crawlt, darf gpt4o_io besitzen, ohne damit |V| von
+gpt4_io zu kennen -- dieselbe Begruendung, die auch die Namenslisten real
+umsetzbar macht. Damit sind sie die *realistische* Fassung von `exact` und die
+eigentliche Frage dieser Achse: traegt ein fremder, unvollstaendiger Prior das
+Verfahren dort, wo die reine Online-Schaetzung es nicht tut?
+
+Die Grenze des Arguments gehoert in jede Auswertung: die beiden Paare stammen
+aus verwandten Modellen und beschreiben dieselbe Welt. Der Partner ist deshalb
+ein ungewoehnlich *guter* Prior -- kein Beleg, dass beliebiges Fremdwissen
+ebenso traegt.
+
+Der Unterschied der beiden Fallbacks ist genau der Umgang mit dem, was der
+Partner nicht kennt. `cross-one` setzt 1 und ueberschaetzt `b_ij` dort maximal;
+der Walk nimmt Zuege in unbekanntes Gebiet also besonders bereitwillig an.
+`cross-online` fuellt die Luecke mit dem, was der Walk selbst gesehen hat, ist
+also nie schlechter informiert als `online`, mischt dafuer aber zwei
+verschieden skalierende Groessen in dieselbe Formel (der selbst gezaehlte Grad
+ist systematisch untererfasst).
+
+Der Abgleich laeuft **vorab**, nicht zur Laufzeit -- wie bei den Namenslisten
+darf der heisse Pfad keine Strings anfassen:
+
+```bash
+python build_indeg_index.py --graphs gpt4_io gpt4o_io
+```
+
+Das legt je Paar ein int32-Array unter `data/indeg_index/` ab
+(Knoten-ID -> Grad im Partner, -1 = dort nicht vorhanden). Fuer Graphen ohne
+Partnereintrag scheitern die `cross`-Varianten laut; bei einem Lauf ueber die
+ganze Registry sind sie dort abzuwaehlen.
 
 `nmmc-uni__online__*` ist damit das erste Verfahren hier mit bekannter
 Zielverteilung auf der gerichteten Sicht, das in `Category.REALIZABLE` faellt.

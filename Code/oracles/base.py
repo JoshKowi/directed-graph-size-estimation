@@ -63,7 +63,7 @@ Schnittstelle:
         .cost() -> dict[str, int]
         .neighbors(u), .degree(u), .random_node(), .seed_nodes(k)
         .mark(), .snapshots, .finalize_checkpoints()
-        .prepare(graph)   (classmethod, vor dem Fork)
+        .prepare(graph), .applicable(graph)   (classmethods)
 """
 
 from __future__ import annotations
@@ -236,6 +236,25 @@ class Oracle:
         raise NotImplementedError
 
     # -- Vorbereitung -----------------------------------------------------
+    @classmethod
+    def applicable(cls, graph_name: str) -> bool:
+        """Kann dieses Oracle diesen Graphen ueberhaupt bedienen?
+
+        Bewusst der *Name* und nicht der Graph: die Frage muss beantwortbar
+        sein, bevor geladen wird -- run_experiment.py entscheidet erst, was zu
+        rechnen ist, und laedt dann (das Laden dauert bei den grossen Basen
+        ueber eine Minute). Anwendbarkeit ist eine Eigenschaft der Identitaet
+        des Graphen, nicht seines Inhalts.
+
+        Default: ja. Nur Oracles mit einer Voraussetzung am Graphen sagen hier
+        nein -- oracles.local_access.CrossInDegreeCrawlOracle braucht einen
+        Partnergraphen, den es nicht fuer jeden gibt. Die CLIs waehlen solche
+        Verfahren dann ab, statt den ganzen Lauf abzubrechen
+        (estimators.applicable). Wer sie *namentlich* anfordert, bekommt
+        weiterhin den lauten Fehler aus prepare().
+        """
+        return True
+
     @classmethod
     def prepare(cls, graph) -> None:
         """Was ein Oracle am Graphen braucht, bevor der Runner forkt.

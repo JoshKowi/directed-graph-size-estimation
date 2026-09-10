@@ -185,7 +185,7 @@ def main() -> None:
 
     graph_names = ([config.resolve_graph(g) for g in args.graphs]
                    if args.graphs else loader.available_graphs())
-    ests = estimators.build_all(args.estimators)
+    all_ests = estimators.build_all(args.estimators)
     code = provenance.code_fingerprint()
 
     if args.deprecate is not None:
@@ -195,6 +195,16 @@ def main() -> None:
 
     for name in graph_names:
         starts = _resolve_starts(name, args)
+        # Vor dem Planen abwaehlen, was dieser Graph nicht hergibt (z.B. NMMC
+        # mit Partnergraph auf einem Graphen ohne Partner). Namentlich
+        # angeforderte Estimators bleiben drin und scheitern dann laut.
+        ests, _skipped = estimators.applicable(all_ests, name)
+        if _skipped:
+            if args.estimators:
+                ests = all_ests
+            else:
+                print(f"[{name}] {len(_skipped)} Estimators uebersprungen, hier "
+                      f"nicht anwendbar: {', '.join(_skipped)}", flush=True)
         skip = set() if args.replace else _existing_runs(name, args.seed, starts)
         planned_for = lambda bs: {(v, e.name, b, r)             # noqa: E731
                                   for v in args.views for e in ests

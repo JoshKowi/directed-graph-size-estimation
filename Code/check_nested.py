@@ -68,8 +68,17 @@ def main() -> None:
     graph = loader.load_graph(args.graph)
     # capture_recapture bringt zwar estimate_nested mit (es ist eine Pipeline),
     # darf es aber nicht benutzen -- siehe supports_nested.
-    ests = [e for e in estimator_registry.build_all(args.estimators)
+    _all = [e for e in estimator_registry.build_all(args.estimators)
             if hasattr(e, "estimate_nested") and getattr(e, "supports_nested", False)]
+    # Anwendbarkeit haengt am Graphen, nicht an der View (alle Views teilen
+    # sich Namen und IDs) -- deshalb einmal hier statt je View.
+    ests, skipped = estimator_registry.applicable(_all, graph.name)
+    if skipped:
+        if args.estimators:
+            ests = _all            # namentlich angefordert: laut scheitern lassen
+        else:
+            print(f"  ({len(skipped)} Estimators uebersprungen, auf diesem Graphen "
+                  f"nicht anwendbar: {', '.join(skipped)})")
     failed = 0
 
     for view_name in args.views:

@@ -13,7 +13,9 @@ ueber die Laeufe, Whisker = Spanne min..max:
     c_t / c          -- wie weit die gelernte Normierung an das wahre
                         c = max b_ij herangekommen ist. Solange sie darunter
                         liegt, greift die Kappung gamma = 1 und die QSD ist
-                        noch gar nicht die Zielverteilung.
+                        noch gar nicht die Zielverteilung. Leer bei `online`
+                        und `cross-online`: dort haengt der Nenner am Lauf,
+                        ein festes c gibt es nicht (s. nmmc_trace.true_c).
 
 Eine Farbe je View.
 

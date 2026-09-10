@@ -6,10 +6,12 @@ Schnittstelle:
     class CrawlOracle(Oracle)         -- seed_nodes(), neighbors(), degree()
     class JumpCrawlOracle(CrawlOracle)     -- zusaetzlich random_node()
     class InDegreeCrawlOracle(CrawlOracle) -- zusaetzlich in_degree()
+    class CrossInDegreeCrawlOracle(CrawlOracle) -- zusaetzlich cross_in_degree()
 """
 
 from __future__ import annotations
 
+import config
 from oracles.base import Oracle
 
 
@@ -108,3 +110,82 @@ class InDegreeCrawlOracle(CrawlOracle):
 
     def in_degree(self, u) -> int:
         return int(self.graph.in_degrees[u])
+
+
+# Vorab gebaute In-Grad-Indizes, je Graphname einmal geladen. Alle Views teilen
+# sich Namen und IDs (graphs.views), der Index gilt deshalb fuer alle drei --
+# und wird so auch nur einmal je Prozess geladen statt einmal je View.
+_CROSS_INDEX: dict[str, object] = {}
+
+
+class CrossInDegreeCrawlOracle(CrawlOracle):
+    """CrawlOracle plus Eingangsgrad aus dem *Partnergraphen* -- fuer NMMC.
+
+    Der Eingangsgrad, den NMMC braucht, steht im gecrawlten Graphen nicht zur
+    Verfuegung. Er steht aber in einem anderen Graphen, der dieselben
+    Entitaeten beschreibt: fuer einen Lauf auf gpt4_io liefert gpt4o_io die
+    Grade und umgekehrt (config.CROSS_GRAPHS).
+
+    Warum das real umsetzbar ist -- und InDegreeCrawlOracle nicht: der Partner
+    ist *externes Wissen ueber Entitaeten*, keine Kenntnis der Knotenmenge des
+    geschaetzten Graphen. Wer gpt4_io crawlt, darf gpt4o_io besitzen, ohne
+    damit |V| von gpt4_io zu kennen -- dieselbe Begruendung, die auch die
+    Namenslisten real umsetzbar macht. Dass der Partner nur einen Teil der
+    Entitaeten kennt, ist eine Frage der Guete, nicht der Umsetzbarkeit; was
+    fehlt, faengt der Fallback in sampling.indegree ab.
+
+    Grenze des Arguments, die in jede Auswertung gehoert: die beiden Paare
+    stammen aus verwandten Modellen und beschreiben dieselbe Welt. Der Partner
+    ist deshalb ein ungewoehnlich *guter* Prior -- und kein Beleg, dass
+    beliebiges Fremdwissen ebenso traegt.
+
+    Der Zugriff kostet nichts: er schlaegt in Daten nach, die der Crawler
+    ohnehin besitzt, und geht nicht an den gecrawlten Graphen. Die
+    Terminierung beruehrt das nicht -- jeder Schritt des Samplers fragt
+    zusaetzlich neighbors() und zahlt mindestens COST_CACHE_HIT.
+
+    `cross_in_degree(u)` gibt -1, wenn die Entitaet im Partner fehlt; was dann
+    geschieht, entscheidet die Fallback-Wahl in sampling.indegree.
+    """
+
+    @classmethod
+    def applicable(cls, graph_name: str) -> bool:
+        return config.cross_graph(graph_name) is not None
+
+    @classmethod
+    def prepare(cls, graph) -> None:
+        # Vor dem Fork laden, sonst je Kindprozess und je Task erneut.
+        cls._index(graph)
+
+    @classmethod
+    def _index(cls, graph):
+        arr = _CROSS_INDEX.get(graph.name)
+        if arr is None:
+            import build_indeg_index
+            partner = config.cross_graph(graph.name)
+            if partner is None:
+                # Laut scheitern statt still auf etwas anderes ausweichen: ein
+                # Verfahren, das den Partner im Namen traegt, darf ohne ihn
+                # kein Ergebnis liefern.
+                raise SystemExit(
+                    f"Fuer {graph.name!r} ist kein Partnergraph hinterlegt "
+                    f"(config.CROSS_GRAPHS) -- die cross-Varianten von NMMC "
+                    f"gibt es dort nicht. Bekannt: "
+                    f"{', '.join(sorted(config.CROSS_GRAPHS))}. Bei einem Lauf "
+                    f"ueber die ganze Registry diese Estimators abwaehlen.")
+            arr = build_indeg_index.load_index(graph.name, partner)
+            if len(arr) != graph.n_nodes:
+                raise SystemExit(
+                    f"In-Grad-Index passt nicht zu {graph.name}: {len(arr)} "
+                    f"Eintraege gegen {graph.n_nodes} Knoten. Neu bauen mit "
+                    f"python build_indeg_index.py --graphs {graph.name} --force")
+            _CROSS_INDEX[graph.name] = arr
+        return arr
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._cross = self._index(self.graph)
+
+    def cross_in_degree(self, u) -> int:
+        """Eingangsgrad im Partnergraphen, oder -1 wenn dort nicht vorhanden."""
+        return int(self._cross[u])

@@ -77,7 +77,17 @@ def main() -> None:
 
     graph = loader.load_graph(args.graph)
     groups: dict[str, list] = defaultdict(list)
-    for est in estimator_registry.build_all(args.estimators):
+    _ests, _skipped = estimator_registry.applicable(
+        estimator_registry.build_all(args.estimators), graph.name)
+    if _skipped and not args.estimators:
+        # Nur bei einem Lauf ueber die ganze Registry stillschweigend abwaehlen
+        # -- wer sie namentlich nennt, soll den lauten Fehler sehen.
+        print(f"  ({len(_skipped)} Estimators uebersprungen, auf diesem Graphen "
+              f"nicht anwendbar: {', '.join(_skipped)})")
+    elif _skipped:
+        _ests += [e for e in estimator_registry.build_all(args.estimators)
+                  if e.name in _skipped]
+    for est in _ests:
         if hasattr(est, "walk_key"):
             groups[est.walk_key].append(est)
     failed = 0

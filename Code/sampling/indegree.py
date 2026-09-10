@@ -16,10 +16,27 @@ Sackgassen-Strategie (sampling.dead_ends) und bei DURW die Sprungart
 damit -- wie im Repo ueblich erst in estimators/__init__.py -- ueber die
 Kategorie.
 
-    online  -- aus selbst beobachteten Kanten geschaetzt (Paper, 6.3).
-               Braucht nur das CrawlOracle: real umsetzbar.
-    exact   -- der wahre Eingangsgrad (graphs.graph.in_degrees) ueber
-               oracles.local_access.InDegreeCrawlOracle: nur Vergleich.
+    online       -- aus selbst beobachteten Kanten geschaetzt (Paper, 6.3).
+                    Braucht nur das CrawlOracle: real umsetzbar.
+    exact        -- der wahre Eingangsgrad (graphs.graph.in_degrees) ueber
+                    oracles.local_access.InDegreeCrawlOracle: nur Vergleich.
+    cross-one    -- der Eingangsgrad derselben Entitaet im *Partnergraphen*
+                    (config.CROSS_GRAPHS), fehlt sie dort: 1.
+    cross-online -- derselbe Index, fehlt die Entitaet: die Online-Schaetzung.
+
+Die beiden cross-Varianten sind real umsetzbar: der Partner ist externes Wissen
+ueber Entitaeten, keine Kenntnis der Knotenmenge des geschaetzten Graphen
+(Begruendung im Docstring von oracles.local_access.CrossInDegreeCrawlOracle).
+Sie sind damit die realistische Fassung von `exact` -- und die eigentliche
+Frage dieser Achse: traegt ein *fremder*, unvollstaendiger Prior das Verfahren
+dort, wo die reine Online-Schaetzung es nicht tut?
+
+Der Unterschied der beiden Fallbacks ist genau der Umgang mit dem, was der
+Partner nicht kennt. `cross-one` setzt 1 und ueberschaetzt b_ij dort maximal --
+der Walk nimmt Zuege in unbekanntes Gebiet also besonders bereitwillig an.
+`cross-online` fuellt die Luecke mit dem, was der Walk selbst gesehen hat, ist
+also nie schlechter informiert als `online`, aber im Kern des Partners deutlich
+besser. Welcher der beiden gewinnt, ist eine empirische Frage.
 
 Warum `exact` trotzdem gebaut wird, obwohl es nicht real umsetzbar ist: die
 Online-Schaetzung verschiebt b_ij massiv. Auf Slashdot0811 gerichtet ist der
@@ -142,7 +159,71 @@ class ExactInDegree(InDegreeSource):
         return d if d else 1
 
 
+class _CrossInDegree(InDegreeSource):
+    """Gemeinsamer Teil der beiden cross-Varianten.
+
+    Der Index ist vorab gebaut (build_indeg_index.py) und liegt am Oracle: zur
+    Laufzeit wird kein Name angefasst, die Abfrage ist ein Array-Zugriff. -1
+    heisst "im Partner nicht vorhanden" -- nur dann greift der Fallback.
+
+    Ein Grad 0 im Partner ist dagegen *kein* Fehlschlag, sondern die Auskunft
+    "dort kennt niemand diese Entitaet": auf 1 gehoben wie ueberall, weil b_ij
+    sonst durch null teilte.
+    """
+
+    def get(self, state, oracle, v) -> int:
+        d = oracle.cross_in_degree(v)
+        if d >= 0:
+            return d if d else 1
+        return self.fallback(state, v)
+
+    def fallback(self, state, v) -> int:
+        raise NotImplementedError
+
+
+class CrossOneInDegree(_CrossInDegree):
+    """Partnergraph, fehlende Entitaeten bekommen 1.
+
+    Die schlichte Variante: was der Partner nicht kennt, gilt als kaum
+    verlinkt. Das ueberschaetzt b_ij fuer genau die Knoten, ueber die am
+    wenigsten bekannt ist -- der Walk nimmt Zuege dorthin also besonders
+    bereitwillig an. Ob das hilft (mehr Diffusion) oder schadet (falsche QSD),
+    ist der Vergleich zu cross-online.
+    """
+
+    name = "cross-one"
+
+    def fallback(self, state, v) -> int:
+        return 1
+
+
+class CrossOnlineInDegree(_CrossInDegree):
+    """Partnergraph, fehlende Entitaeten aus den selbst beobachteten Kanten.
+
+    Nie schlechter informiert als `online` und im Kern des Partners deutlich
+    besser. Der Preis ist, dass zwei verschiedene Groessen in dieselbe Formel
+    gehen: ein Grad aus dem Partner und ein selbst gezaehlter, die
+    systematisch verschieden skalieren (der gezaehlte ist untererfasst, siehe
+    OnlineInDegree). Wie stark das stoert, misst nmmc_trace.py.
+    """
+
+    name = "cross-online"
+
+    def start(self, oracle):
+        return {}
+
+    def observe(self, state, out) -> None:
+        for v in out.tolist():
+            state[v] = state.get(v, 0) + 1
+
+    def fallback(self, state, v) -> int:
+        d = state.get(v, 0)
+        return d if d else 1
+
+
 IN_DEGREES: dict[str, type[InDegreeSource]] = {
     "online": OnlineInDegree,
     "exact": ExactInDegree,
+    "cross-one": CrossOneInDegree,
+    "cross-online": CrossOnlineInDegree,
 }

@@ -31,3 +31,7 @@ additionals/*
 # Namensindizes: je (Graph, Quelle) ein int32-Array plus Beschreibung. Aus
 # additionals/ und dem Graphen jederzeit neu baubar (build_name_index.py).
 data/name_index/*
+
+# In-Grad-Indizes: je (Graph, Partner) ein int32-Array. Aus den Graphen
+# jederzeit neu baubar (build_indeg_index.py).
+data/indeg_index/*

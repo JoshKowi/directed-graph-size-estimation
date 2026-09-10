@@ -2,9 +2,9 @@
 
 *Automatisch erzeugt von `Code/provenance.py` -- nicht von Hand aendern.*
 
-| Daten vom | 2026-09-02 17:59 |
+| Daten vom | 2026-09-08 17:22 |
 |---|---|
-| Code-Fingerabdruck | `ef2b7da65295` |
+| Code-Fingerabdruck | `e884bdb68ddc` |
 | Budget-Metrik | `queries` |
 | Preise | random_node 1, neighbors 1, cache_hit 0.02 |
 | Budgets (Default) | 0.001, 0.005, 0.01, 0.05, 0.1, 0.2 |
@@ -44,7 +44,31 @@ UIS collision counting with a random walk -- dead-end strategies (directed)
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `deadend_uis__directed`).
 
+### `Slashdot0811__durw-vs-rw.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `Slashdot0811__nmmc-trace.png`
+
+NMMC-Diagnose auf **Slashdot (Nov 2008)** (Seed 42): Annahmequote, Anteil der Vorschlaege mit geschaetztem Eingangsgrad 1, und wie weit die gelernte Normierung c_t an das wahre c herangekommen ist -- je Variante aus d--Quelle x Zielverteilung. Erzeugt mit `python nmmc_trace.py --graph Slashdot0811` (`Code/nmmc_trace.py`).
+
+### `Slashdot0811__nmmc_vs_durw__directed.png`
+
+NMMC vs DURW -- known target distribution on the directed view
+
+- Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
+- Seed: 42
+- Einstieg: Default (config.SEED_NODES)
+- Views: directed
+- Estimators: uniform-collision, wis-durw__uniform__margin, nmmc-uni__online__margin, wis-nmmc__online__margin, nmmc-uni__exact__margin, wis-nmmc__exact__margin
+
+Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `nmmc_vs_durw__directed`).
+
 ### `Slashdot0811__ranges-2.png`
+
+Uebersicht fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/compare.py`).
+
+### `Slashdot0811__ranges-3.png`
 
 Uebersicht fuer **Slashdot (Nov 2008)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs Slashdot0811` (`plotting/compare.py`).
 
@@ -59,6 +83,10 @@ Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit 
 ### `Slashdot0811__walk_diagnosis.png`
 
 Diagnose eines Random Walks auf **Slashdot (Nov 2008)** (Seed 42): Leiter der Groessen, Abdeckungskurve, Besuche gegen Grad, meistbesuchte Entitaeten. Erzeugt mit `python diagnose_walk.py --graph Slashdot0811 --views directed undirected` (`Code/diagnose_walk.py`).
+
+### `Slashdot0811__walk_survival.png`
+
+Sink-Survival von Random Walks auf **Slashdot (Nov 2008)** (Seed 42): x = verbrauchter Budget-Anteil, y = Zahl der Laeufe, die noch neue Knoten finden. Erzeugt mit `python walk_sinks.py --graph Slashdot0811` (`Code/walk_sinks.py`).
 
 ### `Slashdot0811__wis_indep__directed.png`
 
@@ -98,12 +126,12 @@ Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot
 
 ### `Slashdot0811__wis_rw_history__views.png`
 
-WIS with random walk (history) -- directed vs undirected
+WIS with random walk (history) -- undirected vs directed
 
 - Graph: **Slashdot (Nov 2008)** (`Slashdot0811`)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
-- Views: directed, undirected
+- Views: undirected, directed
 - Estimators: uniform-collision, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs Slashdot0811` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
@@ -139,6 +167,38 @@ Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit 
 ### `gpt4_io__03c-rw-thinning.png`
 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__04a-durw-vs-rw.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__04b-durw-only.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__04c-walk_survival.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4_io__ranges-2.png`
+
+Uebersicht fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/compare.py`).
+
+### `gpt4_io__ranges-3.png`
+
+Uebersicht fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/compare.py`).
+
+### `gpt4_io__ranges-4.png`
+
+Uebersicht fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/compare.py`).
+
+### `gpt4_io__ranges-5.png`
+
+Uebersicht fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/compare.py`).
+
+### `gpt4_io__ranges.png`
+
+Uebersicht fuer **GPT-4 knowledge graph (instances only)** (Seed 42): Spalte = Kantensicht, eine Farbe je Estimator. Erzeugt mit `python plot_results.py --graphs gpt4_io` (`plotting/compare.py`).
 
 ### `gpt4_io__thinning-without-weights.png`
 
@@ -177,6 +237,18 @@ Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
 ### `gpt4o_io__03c-rw-thinning.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__04a-durw-vs-rw.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__04a1-rw-only.png`
+
+Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
+
+### `gpt4o_io__04c.png`
 
 Keine Definition in `plot_wis.FIGURES` gefunden -- vermutlich von Hand oder mit einer aelteren Codeversion erzeugt.
 
@@ -226,12 +298,12 @@ Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis
 
 ### `gpt4o_io__wis_rw_history__views.png`
 
-WIS with random walk (history) -- directed vs undirected
+WIS with random walk (history) -- undirected vs directed
 
 - Graph: **GPT-4o knowledge graph (instances only)** (`gpt4o_io`)
 - Seed: 42
 - Einstieg: Default (config.SEED_NODES)
-- Views: directed, undirected
+- Views: undirected, directed
 - Estimators: uniform-collision, wis-katzir__rw-history
 
 Erzeugt mit `python plot_wis.py --graphs gpt4o_io` (Definition in `Code/plot_wis.py`, Eintrag `wis_rw_history__views`).
