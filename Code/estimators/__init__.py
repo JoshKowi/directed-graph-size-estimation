@@ -278,6 +278,21 @@ for _src in sorted(namelists.SOURCES):
                         formula="wis-col-katzir"), _cat)
 del _src, _cat, _b, _n, _tag
 
+# w-Sweep auf den In-Grad-Kreuzlisten -- das Gegenstueck zu
+# wis-durw__uniform__w<W>__margin, nur mit simuliertem statt gleichverteiltem
+# Sprung. Bewusst schmal: nur die aus Phase 1 gewaehlte Laenge n = 100000 und
+# Burn-in 0, gefragt ist die Wirkung von w, nicht die von w x Laenge x Burn-in.
+# Das w steht vor dem margin-Slot, damit "...__margin<N>" weiter greift.
+for _src in ("indeg-gpt4_io", "indeg-gpt4o_io"):
+    _cat = _JUMP_CATEGORY[_src]
+    for _w in config.DURW_JUMP_WEIGHTS:
+        REGISTRY[f"durw-{_src}__n100000__w{_w:g}__b0__margin"] = Entry(
+            partial(durw.build, jump=_src, thinning="none", draw_burn_in=0,
+                    draw_limit=100000, jump_weight=_w,
+                    margin=config.SAFETY_MARGIN, formula="wis-col-katzir"),
+            _cat)
+del _src, _cat, _w
+
 # -- NMMC: Non-Markovian Monte Carlo (Lee/Kang/Eun 2019) -----------------
 # Rejection auf dem Simple Random Walk: ein abgelehnter Zug absorbiert die
 # Kette, die daraufhin auf ihre eigene gewichtete Historie umverteilt wird
