@@ -377,6 +377,72 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+#: Wie ein Parameter im Estimator-Namen steht: "__w0.1__", "__n10000__",
+#: "__b5__". Der Wert darf einen Punkt enthalten (w = 0.1), der Slot endet am
+#: naechsten "__" oder am Namensende.
+_PARAM_RE = "__{key}([0-9]+(?:\\.[0-9]+)?)(?:__|$)"
+
+#: Klartext fuer die Zeilenbeschriftung.
+PARAM_LABELS = {
+    "w": "w (Sprunggewicht)",
+    "n": "n (Listenlaenge)",
+    "b": "b (Burn-in nach Treffer)",
+}
+
+
+def jump_rate_table(df: pd.DataFrame, index: str = "estimator",
+                    view: str | None = None) -> pd.DataFrame:
+    """Sprunganteil in Prozent, je Zeile und Budget.
+
+    Der Anteil ist n_random_node/extra_n_samples: bei DURW die Spruenge, bei
+    oracles.name_list die erfolgreichen Ziehungen. Er ist die Groesse, an der
+    haengt, wie schnell DURW mischt -- und damit der Grund, warum derselbe
+    Schaetzer auf gpt4o_io schon bei 0,5 % Budget trifft und auf gpt4_io bei
+    10 % noch nicht.
+
+    `index` waehlt die Zeilen:
+
+        "estimator"        eine Zeile je Estimator (Default)
+        "w" | "n" | "b"    der Parameter aus dem Namen -- ergibt genau die
+                           Tabelle "Parameter x Budget". Estimators ohne diesen
+                           Parameter fallen weg; wer mehrere Familien
+                           gleichzeitig zeigt (top-q und indeg), muss vorher
+                           filtern, sonst mitteln sich zwei Reihen zu einer.
+
+    `view` schraenkt auf eine Kantensicht ein. Ohne Angabe wird ueber die
+    vorhandenen gemittelt -- was selten gemeint ist, weil directed und
+    undirected verschieden oft springen.
+    """
+    s = summarize(df)
+    if view is not None:
+        s = s[s["view"] == view]
+    if s.empty or "jump_rate_median" not in s.columns:
+        return pd.DataFrame()
+    s = s[s["jump_rate_median"].notna()]
+    if s.empty:
+        return pd.DataFrame()
+
+    if index == "estimator":
+        rows = s["estimator"]
+    elif index in PARAM_LABELS:
+        rows = pd.to_numeric(
+            s["estimator"].str.extract(_PARAM_RE.format(key=index))[0],
+            errors="coerce")
+        s = s[rows.notna()]
+        rows = rows.dropna()
+        if s.empty:
+            return pd.DataFrame()
+    else:
+        raise ValueError(
+            f"index={index!r} -- moeglich: 'estimator' oder {sorted(PARAM_LABELS)}")
+
+    out = (s.assign(_row=rows.values, _pct=s["jump_rate_median"] * 100.0)
+             .pivot_table(index="_row", columns="budget_rel", values="_pct"))
+    out.index.name = PARAM_LABELS.get(index, "Estimator")
+    out.columns = [f"{b:g}" for b in out.columns]
+    return out.round(1)
+
+
 def visit_summary(visits: pd.DataFrame, top: int = 20) -> pd.DataFrame:
     """Haeufigste und seltenste besuchte Knoten je Estimator und Budget
     (Original-Knotennamen)."""
