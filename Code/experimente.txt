@@ -1,0 +1,150 @@
+===============================================================================
+ EXPERIMENTE: DURW mit simuliertem Zufallssprung
+===============================================================================
+
+Worum es geht: DURWs Sprung zieht sonst gleichverteilt aus V und setzt damit
+Kenntnis der Knotenmenge voraus -- genau das, was geschaetzt werden soll. Hier
+ersetzt eine externe Namensliste das: zufaelligen Eintrag ziehen, im Graphen
+nachschlagen, bei Fehlschlag fuer Kosten 1 erneut ziehen, bis ein Knoten
+gefunden ist.
+
+Zwei Achsen:
+  n<N>   Laenge der Liste (nur die ersten N Eintraege, nach Relevanz sortiert)
+  b<B>   Burn-in: Schritte nach jedem Treffer, bevor der Knoten ins Sample darf
+
+Alle Befehle aus dem Verzeichnis Code/ ausfuehren.
+
+!! WICHTIG: die In-Grad-Liste laeuft immer UEBER KREUZ !!
+   gpt4_io  -> durw-indeg-gpt4o_io__*
+   gpt4o_io -> durw-indeg-gpt4_io__*
+   Vertauscht bekommt man die Selbstliste (98 % Abdeckung, 100 % Treffer) --
+   eine Tautologie ohne Aussage. Die Registry kann das nicht erzwingen, weil
+   der Graph erst zur Laufzeit feststeht.
+
+
+-------------------------------------------------------------------------------
+ 0  VORAUSSETZUNG: Namensindizes bauen
+-------------------------------------------------------------------------------
+Einmalig je Rechner. Auf diesem Rechner bereits erledigt -- auf dem
+Rechenzentrum noetig, weil data/name_index/ nicht versioniert ist.
+Dauer rund 7 Minuten.
+
+python build_name_index.py --graphs gpt4_io gpt4o_io \
+    --sources top-q indeg-gpt4_io indeg-gpt4o_io --force
+
+
+-------------------------------------------------------------------------------
+ 1  PHASE 1: Listenlaenge, ohne Burn-in
+-------------------------------------------------------------------------------
+Vier Laengen je Quelle, Burn-in 0. Gesucht ist die Laenge, bei der Abdeckung
+und Ausschuss am besten stehen -- die Vorhersage dazu liefern die Kurven in
+data/plots/*__namelist-surplus.png.
+
+--- 1a  gpt4_io ---
+
+python run_experiment.py --graphs gpt-4-io --views directed undirected \
+    --estimators durw-top-q__n1000__b0__margin durw-top-q__n10000__b0__margin \
+                 durw-top-q__n100000__b0__margin durw-top-q__n1000000__b0__margin \
+                 durw-indeg-gpt4o_io__n1000__b0__margin \
+                 durw-indeg-gpt4o_io__n10000__b0__margin \
+                 durw-indeg-gpt4o_io__n100000__b0__margin \
+                 durw-indeg-gpt4o_io__n1000000__b0__margin \
+    --budgets 0.001 0.005 0.01 0.02 0.05 --runs 10 --checkpoint-budgets --jobs 4
+
+# Plot: die vier Laengen je Quelle, dazu zwei Referenzen.
+# wis-durw__uniform__margin = derselbe DURW mit *gleichverteiltem* Sprung; die
+# Differenz ist genau der Preis dafuer, V nicht zu kennen.
+# uniform-collision = gleichverteiltes Ziehen ohne Walk, die obere Messlatte.
+
+python plot_results.py --graphs gpt4_io \
+    --match durw-top-q__n wis-durw__uniform__margin uniform-collision
+
+python plot_results.py --graphs gpt4_io \
+    --match durw-indeg-gpt4o_io__n wis-durw__uniform__margin uniform-collision
+
+--- 1b  gpt4o_io ---
+
+python run_experiment.py --graphs gpt-4o-io --views directed undirected \
+    --estimators durw-top-q__n1000__b0__margin durw-top-q__n10000__b0__margin \
+                 durw-top-q__n100000__b0__margin durw-top-q__n1000000__b0__margin \
+                 durw-indeg-gpt4_io__n1000__b0__margin \
+                 durw-indeg-gpt4_io__n10000__b0__margin \
+                 durw-indeg-gpt4_io__n100000__b0__margin \
+                 durw-indeg-gpt4_io__n1000000__b0__margin \
+    --budgets 0.001 0.005 0.01 0.02 0.05 --runs 10 --checkpoint-budgets --jobs 4
+
+python plot_results.py --graphs gpt4o_io \
+    --match durw-top-q__n wis-durw__uniform__margin uniform-collision
+
+python plot_results.py --graphs gpt4o_io \
+    --match durw-indeg-gpt4_io__n wis-durw__uniform__margin uniform-collision
+
+
+-------------------------------------------------------------------------------
+ 2  PHASE 2: Burn-in am Optimum
+-------------------------------------------------------------------------------
+Erst ausfuehren, wenn aus Phase 1 feststeht, welche Laenge am besten abschneidet.
+Dann unten <N> durch diese Laenge ersetzen (1000 | 10000 | 100000 | 1000000)
+und <FREMD> durch die jeweils andere In-Grad-Liste.
+
+Der Burn-in soll die Verzerrung der Liste abbauen: getroffene Knoten haben
+deutlich hoeheren Grad als verfehlte. Er fuehrt dafuer die Verzerrung eines
+Random-Walk-Schritts ein -- ob und wo sich das lohnt, ist offen.
+
+--- 2a  gpt4_io  (<FREMD> = indeg-gpt4o_io) ---
+
+python run_experiment.py --graphs gpt-4-io --views directed undirected \
+    --estimators durw-top-q__n<N>__b0__margin  durw-top-q__n<N>__b1__margin \
+                 durw-top-q__n<N>__b2__margin  durw-top-q__n<N>__b5__margin \
+                 durw-top-q__n<N>__b10__margin \
+    --budgets 0.001 0.005 0.01 0.02 0.05 --runs 10 --checkpoint-budgets --jobs 4
+
+python plot_results.py --graphs gpt4_io \
+    --match durw-top-q__n<N>__b wis-durw__uniform__margin uniform-collision
+
+python run_experiment.py --graphs gpt-4-io --views directed undirected \
+    --estimators durw-indeg-gpt4o_io__n<N>__b0__margin \
+                 durw-indeg-gpt4o_io__n<N>__b1__margin \
+                 durw-indeg-gpt4o_io__n<N>__b2__margin \
+                 durw-indeg-gpt4o_io__n<N>__b5__margin \
+                 durw-indeg-gpt4o_io__n<N>__b10__margin \
+    --budgets 0.001 0.005 0.01 0.02 0.05 --runs 10 --checkpoint-budgets --jobs 4
+
+python plot_results.py --graphs gpt4_io \
+    --match durw-indeg-gpt4o_io__n<N>__b wis-durw__uniform__margin uniform-collision
+
+--- 2b  gpt4o_io  (<FREMD> = indeg-gpt4_io) ---
+Dieselben vier Befehle, aber --graphs gpt-4o-io, --graphs gpt4o_io beim Plot
+und durw-indeg-gpt4_io__ statt durw-indeg-gpt4o_io__.
+
+
+-------------------------------------------------------------------------------
+ HINWEISE
+-------------------------------------------------------------------------------
+
+--jobs 4 statt 8
+    prepare() laedt vor dem Fork alle vorhandenen Namensindizes des Graphen
+    (rund 50 MB); die Graphen selbst sind der groessere Posten. Mit 8 Prozessen
+    wurde der Rechner frueher schon in den Swap gedrueckt.
+
+kein --share-walks
+    Jede Laenge und jeder Burn-in hat einen eigenen walk_key -- geteilt wuerde
+    ohnehin nichts, der Schalter braeuchte nur Zeit fuer die Gruppenbildung.
+
+hoechstens 8 Kurven je Bild
+    plot_results.py bricht darueber ab (so viele klar unterscheidbare Farben
+    gibt es). Die --match-Zeilen oben ergeben je 4 + 2 Referenzen.
+
+Trefferquote je Lauf
+    steht in der Ergebnis-CSV und muss nicht extra gemessen werden:
+        n_random_node / (n_random_node + n_draw_miss)
+
+Ergebnisse werden angehaengt, nicht ueberschrieben
+    Ein zweiter Aufruf mit denselben Parametern rechnet nichts neu. Neu rechnen
+    erzwingt --replace.
+
+Erwartung
+    Bei 1 Mio Eintraegen erreicht die beste Liste rund 10 % der Knoten, und
+    diese Teilmenge ist gradverzerrt. pi(v) ~ (w + deg_Gu(v)) gilt dann nicht
+    mehr, die Schaetzungen werden also vermutlich deutlich danebenliegen. Das
+    Experiment misst, wie weit -- und ob Phase 2 etwas davon zurueckholt.
