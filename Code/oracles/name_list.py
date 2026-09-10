@@ -36,6 +36,7 @@ vorab gebaut; zur Laufzeit wird kein einziger String angefasst.
 
 Schnittstelle:
     load_index(graph_name, source) -> np.ndarray
+    jump_set_mask(graph, source, limit) -> np.ndarray
     index_meta(graph_name, source) -> dict
     available(graph_name) -> list[str]
     class NameListOracle(Oracle)  -- random_node(), neighbors(), degree(),
@@ -59,6 +60,11 @@ MISS = -1
 # (77 MB bei enwiki -- achtmal waeren es 600 MB fuer nichts).
 _CACHE: dict[tuple[str, str], np.ndarray] = {}
 
+# Zugehoerigkeitsmasken je (Graph, Quelle, Laenge). Als bool-Array ueber alle
+# Knoten statt als Menge von IDs: bei gpt4_io sind das 6,5 MB gegen ein
+# Vielfaches fuer ein Python-set, und der Test ist ein Array-Zugriff.
+_MASKS: dict[tuple[str, str, int | None], np.ndarray] = {}
+
 
 def _path(graph_name: str, source: str):
     return config.NAME_INDEX_DIR / f"{graph_name}__{source}.npy"
@@ -79,6 +85,26 @@ def load_index(graph_name: str, source: str) -> np.ndarray:
         arr = np.load(p, mmap_mode=None)
         _CACHE[key] = arr
     return arr
+
+
+def jump_set_mask(graph, source: str, limit: int | None = None) -> np.ndarray:
+    """bool-Maske ueber alle Knoten: erreicht der Sprung diesen Knoten?
+
+    Aus dem *geschnittenen* Index gebaut -- eine kuerzere Liste erreicht
+    weniger Knoten, die Maske haengt also an `limit`.
+    """
+    key = (graph.name, source, limit)
+    mask = _MASKS.get(key)
+    if mask is None:
+        idx = load_index(graph.name, source)
+        if limit is not None:
+            idx = idx[:limit]
+        mask = np.zeros(graph.n_nodes, dtype=bool)
+        hit = idx[idx != MISS]
+        if hit.size:
+            mask[hit] = True
+        _MASKS[key] = mask
+    return mask
 
 
 def index_meta(graph_name: str, source: str) -> dict:
@@ -121,6 +147,10 @@ class NameListOracle(Oracle):
         """
         for source in available(graph.name):
             load_index(graph.name, source)
+            # Die volle Maske (limit=None); geschnittene Varianten entstehen
+            # beim ersten Zugriff und sind dann klein genug, um sie je Prozess
+            # zu bauen.
+            jump_set_mask(graph, source)
 
     def __init__(self, *args, source: str, limit: int | None = None,
                  burn_in: int = config.DEFAULT_DRAW_BURN_IN,
@@ -154,6 +184,7 @@ class NameListOracle(Oracle):
             self._index = self._index[:limit]
         self.limit = limit
         self._n = len(self._index)
+        self._mask = jump_set_mask(self.graph, source, limit)
         if self._n == 0 or not bool((self._index != MISS).any()):
             # Passiert z.B. bei Graphen mit numerischen Knotennamen
             # (Slashdot0811, wiki-topcats): dort gibt es nichts abzugleichen.
@@ -191,6 +222,17 @@ class NameListOracle(Oracle):
 
     def degree(self, u) -> int:
         return len(self._fetch(u))
+
+    def in_jump_set(self, u) -> bool:
+        """Liegt der Knoten in der Trefferteilmenge S?
+
+        Anders als beim gleichverteilten Sprung ist das hier *nicht* fuer alle
+        Knoten wahr: die Liste deckt den Graphen nur zu 6 bis 22 % ab. Knoten
+        ausserhalb von S sind allein ueber Kanten erreichbar und haben deshalb
+        eine andere Stationaerwahrscheinlichkeit -- s.
+        weighting.DurwJumpSetWeighting.
+        """
+        return bool(self._mask[u])
 
     def seed_nodes(self, k: int = 1) -> list:
         """Einstiege kommen aus derselben Liste -- ein Crawler, der nur sie

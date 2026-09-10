@@ -355,6 +355,41 @@ und schätzt um die Hälfte zu klein. Für den Vergleich gibt es deshalb die Rei
 Kurven je Bild). Den Sprunganteil eines Laufs liefert die Ergebnis-CSV ohne
 Zusatzarbeit: `n_random_node / extra_n_samples`.
 
+#### Abweichung vom Original: Sprung aus einer Namensliste
+
+Bei Ribeiro & Towsley ist der virtuelle Knoten σ mit **ganz V** verbunden — der
+Sprung ist gleichverteilt über die Knotenmenge, und genau daraus folgt
+`π(v) ~ w + deg_Gu(v)`. Zieht der Sprung dagegen aus einer externen Namensliste
+(`oracles/name_list.py`), ist σ nur mit der Trefferteilmenge **S** verbunden.
+Das ist eine **andere Kette** mit einer anderen Stationärverteilung:
+
+    π(v) ~ deg_Gu(v) + w · 1[v ∈ S]
+
+Die Listenvarianten sind damit kein Nachbau des Papers, sondern eine Variante.
+Wertet man sie mit der Original-Gewichtung `1/(w + deg_Gu)` aus
+(`durw-<quelle>__*`), bekommen Knoten außerhalb von S einen um `w` zu großen
+Nenner — und das ist keine Randgruppe: auf gpt4o_io gerichtet liegen nur 58 %
+(top-q) bzw. 69 % (in-degree) der Samples in S. Die Folge ist ein Schätzer ohne
+Fixpunkt bei |V|; `durw-indeg-gpt4_io__n1000000__b0__margin` stieg mit
+wachsendem Budget monoton von 0,115 auf **1,850**, statt zu konvergieren.
+
+`durwset-<quelle>__*` benutzt stattdessen `1/(deg_Gu + w·1[v ∈ S])`
+(`weighting.DurwJumpSetWeighting`). Das macht die Abweichung **nicht**
+rückgängig — der Sprung erreicht weiterhin nur 6 bis 22 % der Knoten —, sondern
+bringt nur die Gewichtung mit der tatsächlichen Kette in Einklang. Mit S = V
+fällt sie exakt auf das Original zurück, weil `Sample.in_jump_set` dann überall
+`True` ist; für den gleichverteilten Sprung gibt es deshalb bewusst *keinen*
+eigenen Eintrag.
+
+Gilt nur für `b0`: läuft nach dem Treffer noch ein Burn-in, liefert der Sprung
+einen Knoten, der gar nicht mehr in S liegt, und die Sprungverteilung ist wieder
+unbekannt. `durw.build` weist die Kombination ab.
+
+Beide Reihen stehen nebeneinander, statt dass die alten Namen umgewidmet werden
+— vorhandene Ergebnisse behalten ihre Bedeutung, und der Vergleich naiv gegen
+korrigiert ist selbst ein Ergebnis. Sie teilen sich denselben `walk_key`, mit
+`--share-walks` läuft der Vergleich also gepaart auf *einer* Trajektorie.
+
 ### 3c. NMMC -- Umverteilung statt Sprung
 
 DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also

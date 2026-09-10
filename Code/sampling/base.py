@@ -35,6 +35,15 @@ class Sample:
     # Aus welchem Durchgang das Sample stammt. Nur Sampler, die mehrere Walks
     # laufen (Capture-Recapture), setzen das -- alle anderen bleiben bei 0.
     walk: int = 0
+    # Kann der Zufallssprung diesen Knoten ueberhaupt treffen? Gelesen
+    # ausschliesslich von weighting.DurwJumpSetWeighting.
+    #
+    # Default True, und das ist der Normalfall: wer gleichverteilt aus V zieht,
+    # erreicht jeden Knoten. Nur ein Sprung aus einer externen Namensliste
+    # (oracles.name_list) deckt V nicht ab -- dort trennt dieses Feld die
+    # erreichbare Teilmenge S vom Rest, weil beide verschiedene
+    # Stationaerwahrscheinlichkeiten haben.
+    in_jump_set: bool = True
 
 
 class Sampler(ABC):

@@ -52,7 +52,8 @@ from oracles.name_list import NameListOracle
 from sampling.durw import DurwSampler
 from sampling.jumps import JUMPS
 from sampling.thinning import THINNINGS
-from weighting.schemes import DurwWeighting, UniformWeighting
+from weighting.schemes import (DurwJumpSetWeighting, DurwWeighting,
+                               UniformWeighting)
 
 # Jede Sprungart braucht ein Oracle, das sie bedienen kann. Eine spaeter
 # hinzukommende Sprungart, die ihr Ziel aus externen Daten simuliert, traegt
@@ -80,8 +81,27 @@ def build(
     draw_burn_in: int = config.DEFAULT_DRAW_BURN_IN,
     draw_limit: int | None = None,
     cost_miss: float = config.COST_DRAW_MISS,
+    jump_set_weighting: bool = False,
     aggregate=np.median,
 ) -> PipelineEstimator:
+    # `jump_set_weighting` ist die Abweichung vom Original: bei einem Sprung
+    # aus einer Namensliste ist sigma nur mit der Trefferteilmenge S verbunden,
+    # nicht mit ganz V, und pi(v) ~ deg_Gu(v) + w*1[v in S] statt
+    # pi(v) ~ w + deg_Gu(v). Siehe weighting.DurwJumpSetWeighting.
+    if jump_set_weighting:
+        if jump == "uniform":
+            raise ValueError(
+                "jump_set_weighting mit jump='uniform' waere rechnerisch "
+                "identisch zu DurwWeighting -- dort ist S = V. Ein eigener "
+                "Eintrag dafuer waere ein Duplikat."
+            )
+        if draw_burn_in:
+            raise ValueError(
+                f"jump_set_weighting braucht draw_burn_in = 0, ist "
+                f"{draw_burn_in}: laeuft nach dem Treffer noch ein Burn-in, "
+                "liefert der Sprung einen Knoten ausserhalb von S, und die "
+                "Sprungverteilung ist wieder unbekannt."
+            )
     # `burn_in` verwirft die ersten Schritte des Walks, `draw_burn_in` die
     # ersten Schritte *nach jedem Sprung* -- zwei verschiedene Dinge, die nicht
     # verwechselt werden duerfen. Letzteres kennt nur das NameListOracle.
@@ -91,8 +111,12 @@ def build(
                              cost_miss=cost_miss, limit=draw_limit)
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
-    weighting = (DurwWeighting(jump_weight) if FORMULAS[formula].weighted
-                 else UniformWeighting())
+    if not FORMULAS[formula].weighted:
+        weighting = UniformWeighting()
+    elif jump_set_weighting:
+        weighting = DurwJumpSetWeighting(jump_weight)
+    else:
+        weighting = DurwWeighting(jump_weight)
 
     return PipelineEstimator(
         # w nur dann im Namen, wenn es vom Default abweicht -- sonst hiessen
@@ -101,6 +125,7 @@ def build(
         # ueberschreibt ihn), fuer Direktaufrufe aus einem Notebook nicht.
         name=f"durw__{formula}__{jump}__{thinning}"
              + (f"__n{draw_limit}" if draw_limit else "")
+             + ("__inS" if jump_set_weighting else "")
              + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=oracle_cls,

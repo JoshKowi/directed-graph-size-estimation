@@ -231,6 +231,20 @@ class Oracle:
         """Gleichverteilter Knoten aus V -- in der Realitaet nicht verfuegbar."""
         raise NotImplementedError
 
+    def in_jump_set(self, u) -> bool:
+        """Kann random_node() diesen Knoten ueberhaupt liefern?
+
+        Default True: wer gleichverteilt aus V zieht, erreicht jeden Knoten.
+        Nur oracles.name_list weicht ab -- dort speist sich die Ziehung aus
+        einer externen Liste, die den Graphen nicht abdeckt, und die
+        Stationaerverteilung des Walks unterscheidet dann zwischen erreichbaren
+        und nur erlaufbaren Knoten (s. weighting.DurwJumpSetWeighting).
+
+        Das ist keine Anfrage nach aussen und kostet deshalb nichts: gefragt
+        wird nach der eigenen Ziehmethode, nicht nach dem Graphen.
+        """
+        return True
+
     def seed_nodes(self, k: int = 1) -> list:
         """Bekannte Einstiegsknoten (realistischer Startpunkt eines Crawls)."""
         raise NotImplementedError

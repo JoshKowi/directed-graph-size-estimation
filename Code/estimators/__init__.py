@@ -276,6 +276,24 @@ for _src in sorted(namelists.SOURCES):
                 partial(durw.build, jump=_src, thinning="none", draw_burn_in=_b,
                         draw_limit=_n, margin=config.SAFETY_MARGIN,
                         formula="wis-col-katzir"), _cat)
+            # Korrigierte Gewichtung -- **Abweichung vom Original**. Der Sprung
+            # aus einer Liste erreicht nur die Trefferteilmenge S, sigma ist
+            # also nicht mit ganz V verbunden und pi(v) ~ deg_Gu(v) + w*1[v in S]
+            # statt pi(v) ~ w + deg_Gu(v). Nur fuer b = 0: mit Burn-in liefert
+            # der Sprung Knoten ausserhalb von S und die Verteilung ist wieder
+            # unbekannt (s. weighting.DurwJumpSetWeighting).
+            #
+            # Eigener Name statt Umwidmung, damit die vorhandenen Ergebnisse
+            # unter durw-<quelle>__* ihre Bedeutung behalten -- der Vergleich
+            # naiv gegen korrigiert ist selbst ein Ergebnis. Beide teilen sich
+            # bei --share-walks eine Trajektorie, der Vergleich ist also gepaart.
+            if _b == 0:
+                REGISTRY[f"durwset-{_src}{_tag}__b0__margin"] = Entry(
+                    partial(durw.build, jump=_src, thinning="none",
+                            draw_burn_in=0, draw_limit=_n,
+                            margin=config.SAFETY_MARGIN,
+                            formula="wis-col-katzir",
+                            jump_set_weighting=True), _cat)
 del _src, _cat, _b, _n, _tag
 
 # w-Sweep auf den In-Grad-Kreuzlisten -- das Gegenstueck zu
@@ -356,10 +374,11 @@ for _indeg in IN_DEGREES:
     # einheitlich, und weil beide denselben walk_key haben, kostet der
     # Doppeleintrag mit --share-walks nichts. Das alpha steht *vor* dem
     # margin-Slot, damit "...__margin<N>" weiter greift.
-    # alpha-Sweep nur fuer online und exact: alpha steuert die Umverteilung,
-    # nicht die d--Quelle -- die Frage ist auf zwei Quellen beantwortet, eine
-    # dritte und vierte Reihe kostete nur weitere 16 Walks.
-    for _a in (config.NMMC_ALPHAS if _indeg in ("online", "exact") else ()):
+    # alpha-Sweep fuer online, exact und cross-online: alpha steuert die
+    # Umverteilung, nicht die d--Quelle -- online und exact spannen die Frage
+    # auf, cross-online prueft sie auf dem realistischen fremden Prior.
+    for _a in (config.NMMC_ALPHAS
+               if _indeg in ("online", "exact", "cross-online") else ()):
         for _tag, _target, _f in (_NMMC_UNI, _NMMC_WIS):
             REGISTRY[f"{_tag}__{_indeg}__a{_a:g}__margin"] = Entry(
                 partial(nmmc.build, target=_target, indeg=_indeg,

@@ -136,3 +136,67 @@ class InDegreeWeighting(WeightingScheme):
         # fuer den Fall, dass die Stichprobe doch woanders herkommt.
         deg = np.array([max(s.degree, 1) for s in samples], dtype=float)
         return 1.0 / deg
+
+
+class DurwJumpSetWeighting(WeightingScheme):
+    """Fuer DURW mit einem Sprung, der V *nicht* abdeckt (oracles.name_list).
+
+    **Abweichung vom Original.** Bei Ribeiro & Towsley ist der virtuelle Knoten
+    sigma mit ganz V verbunden: der Sprung ist gleichverteilt ueber die
+    Knotenmenge, und daraus folgt pi(v) ~ w + deg_Gu(v) -- die Annahme, unter
+    der DurwWeighting korrekt ist. Zieht der Sprung dagegen aus einer externen
+    Namensliste, ist sigma nur mit der Trefferteilmenge S verbunden. Das ist
+    eine andere Kette mit einer anderen Stationaerverteilung:
+
+        pi(v) ~ deg_Gu(v) + w * 1[v in S]
+
+    Diese Klasse ist deren Kehrwert. Sie macht die Abweichung *nicht*
+    rueckgaengig -- der Sprung erreicht weiterhin nur 6 bis 22 % der Knoten --,
+    sondern bringt nur die Gewichtung wieder mit der tatsaechlichen Kette in
+    Einklang. Mit S = V faellt sie exakt auf DurwWeighting zurueck, weil
+    Sample.in_jump_set dann ueberall True ist.
+
+    Warum das noetig ist: mit DurwWeighting bekommen Knoten *ausserhalb* von S
+    einen um w zu grossen Nenner, sind also systematisch zu niedrig gewichtet
+    -- und das betrifft keine Randgruppe. Gemessen auf gpt4o_io gerichtet
+    liegen nur 58,0 % (top-q) bzw. 68,9 % (indeg) der Samples in S; der Rest
+    wurde ueber Kanten erreicht. Die Folge war ein Schaetzer ohne Fixpunkt bei
+    |V|: durw-indeg-gpt4_io__n1000000__b0__margin stieg mit wachsendem Budget
+    monoton von 0,115 auf 1,850, statt zu konvergieren.
+
+    Gilt nur fuer draw_burn_in = 0. Laeuft nach dem Treffer noch ein Burn-in,
+    liefert der Sprung einen Knoten, der gar nicht mehr in S liegt -- die
+    Sprungverteilung ist dann wieder unbekannt und diese Gewichtung ebenso
+    falsch wie DurwWeighting. estimators/methods/durw.py weist die Kombination
+    deshalb ab.
+    """
+
+    needs_degree = True
+
+    def __init__(self, jump_weight: float = config.DURW_JUMP_WEIGHT) -> None:
+        self.jump_weight = float(jump_weight)
+        if self.jump_weight <= 0:
+            raise ValueError(f"jump_weight muss > 0 sein, ist {self.jump_weight}")
+        self.name = f"inv_deg_plus_w{self.jump_weight:g}_inS"
+
+    def weights(self, samples: Sequence[Sample]) -> np.ndarray:
+        if any(s.degree is None for s in samples):
+            raise ValueError(
+                "DurwJumpSetWeighting braucht Sample.degree (den Grad in G_u), "
+                "die Stichprobe wurde aber ohne Gradabfrage gezogen."
+            )
+        deg = np.array([s.degree for s in samples], dtype=float)
+        in_set = np.array([s.in_jump_set for s in samples], dtype=float)
+        denom = deg + self.jump_weight * in_set
+        if not np.all(denom > 0):
+            # deg_Gu = 0 *und* ausserhalb von S hiesse: weder per Sprung noch
+            # ueber eine Kante erreichbar -- der Knoten kann gar nicht im Trace
+            # stehen. Tritt es doch auf, stimmt etwas anderes nicht (etwa ein
+            # Burn-in, der Knoten ausserhalb von S liefert).
+            raise ValueError(
+                f"{int((denom <= 0).sum())} Samples haben deg_Gu = 0 und liegen "
+                "ausserhalb der Sprungmenge -- so ein Knoten waere unerreichbar. "
+                "Laeuft hier ein draw_burn_in > 0? Dann passt diese Gewichtung "
+                "nicht (s. Docstring)."
+            )
+        return 1.0 / denom

@@ -48,6 +48,21 @@ Was hier *nicht* vorkommt:
     allow_self_loops -- graphs.graph._simplify() entfernt Schlingen bereits
                 beim Laden, in G_u kann keine entstehen.
 
+**Abweichung vom Original, wenn der Sprung aus einer Liste kommt.** Bei Ribeiro
+& Towsley ist der virtuelle Knoten sigma mit *ganz V* verbunden -- der Sprung
+ist gleichverteilt ueber die Knotenmenge, und genau das macht
+pi(v) ~ w + deg_Gu(v) moeglich. Zieht der Sprung dagegen aus einer externen
+Namensliste (oracles.name_list), ist sigma nur mit der Trefferteilmenge S
+verbunden, und die Stationaerverteilung ist eine andere:
+
+    pi(v) ~ deg_Gu(v) + w * 1[v in S]
+
+Das ist eine *Variante*, kein Nachbau des Papers. Der Sampler selbst bleibt
+davon unberuehrt -- er merkt sich je Sample nur, ob der Knoten in S liegt
+(`Sample.in_jump_set`); welche Gewichtung daraus folgt, entscheidet
+weighting.DurwWeighting (Original, S = V) bzw.
+weighting.DurwJumpSetWeighting (Variante).
+
 Wichtig fuer alles, was danach kommt: `Sample.degree` traegt hier den Grad in
 G_u, *nicht* den Ausgangsgrad wie bei RandomWalkSampler. InverseDegreeWeighting
 passt damit nicht zu DURW -- die richtige Gewichtung ist DurwWeighting.
@@ -150,7 +165,12 @@ class DurwSampler(Sampler):
                     nbrs = adj[u]
 
                     if step >= self.burn_in:
-                        current.append(Sample(u, len(nbrs), step, walk))
+                        # in_jump_set nur fuer die Gewichtung eines
+                        # listenbasierten Sprungs relevant; beim
+                        # gleichverteilten Sprung ist es immer True (s.
+                        # oracles.base.Oracle.in_jump_set).
+                        current.append(Sample(u, len(nbrs), step, walk,
+                                              oracle.in_jump_set(u)))
                         oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
                     step += 1
 
