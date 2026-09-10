@@ -35,3 +35,8 @@ data/name_index/*
 # In-Grad-Indizes: je (Graph, Partner) ein int32-Array. Aus den Graphen
 # jederzeit neu baubar (build_indeg_index.py).
 data/indeg_index/*
+
+# Zwischenablage von sync_hpc.py: per rsync geholte HPC-CSVs, nach dem
+# Abgleich wieder geloescht. Reiner Transferordner, kein Quellmaterial.
+data/hpc/
+Code/data/hpc/

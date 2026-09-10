@@ -684,6 +684,41 @@ Stehen in einer Datei mehrere Werte, stammen ihre Zeilen aus verschiedenen
 Codeversionen -- unbedenklich, solange die Aenderung den Verlauf nicht
 beruehrt hat, und ein Hinweis, falls doch.
 
+### Ergebnisse vom Rechenzentrum: `sync_hpc.py`
+
+Laeufe auf dem Rechenzentrum schreiben dieselben `<graph>__estimates.csv` wie
+lokal. `sync_hpc.py` holt sie **selbst** per `rsync` nach `data/hpc/` und
+pflegt sie dann ein -- ein Aufruf:
+
+```bash
+cd Code
+python sync_hpc.py --dry-run    # rsync --dry-run + zeigen, was uebertragen wuerde
+python sync_hpc.py              # holen, uebertragen, saubere HPC-Dateien loeschen
+python sync_hpc.py --no-fetch   # nur abgleichen, was schon in data/hpc/ liegt
+python sync_hpc.py --fetch-only # nur holen
+```
+
+Der Fetch braucht passwortlosen SSH-Zugang (Key-Auth). Host und Remote-Pfad
+stehen als Konstante oben in `Code/sync_hpc.py` und lassen sich ueber die
+Umgebungsvariablen `SE_HPC_HOST` / `SE_HPC_REMOTE` oder die Flags
+`--host` / `--remote-dir` / `--graphs` ueberschreiben. Ziel ist immer das
+absolute `data/hpc/`, egal aus welchem Verzeichnis aufgerufen wird.
+
+Der Abgleich gleicht jede `data/hpc/<graph>__estimates.csv` mit der lokalen
+`data/results/<graph>__estimates.csv` ab. Ein Lauf ist durch
+`(graph, view, estimator, seed, start_node, budget_rel, run)` bestimmt (`code`
+gehoert *nicht* dazu). Fehlende Zeilen werden ueber `results.append_results`
+angehaengt -- **lokale Zeilen bleiben unberuehrt**. Vor dem Schreiben landet
+eine Kopie der lokalen Datei unter
+`data/results/deprecated/hpc-sync_<Zeit>/` (`--no-backup` schaltet das aus).
+
+Stimmen alle Parameter ueberein, aber das `estimate` weicht ab, meldet das
+Skript einen **Konflikt**: die Zeile wird nicht uebertragen, die restlichen
+neuen Zeilen der Datei schon, und die HPC-Datei bleibt liegen (Exit-Code 1).
+Ohne Konflikt wird die HPC-Datei nach dem Abgleich geloescht (`--keep`
+behaelt sie). Am Ende steht, wie viele Zeilen je Estimator und View
+uebertragen wurden.
+
 ## Mehrere Durchlaeufe je Graph: `--seed`
 
 Der Seed bestimmt den kompletten Zufallsstrom eines Laufs. Ein zweiter Lauf mit
