@@ -334,6 +334,17 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
     # plot_results.py --jump-colours meldet das dann, statt still zu faerben.
     if "n_random_node" not in df.columns:
         df = df.assign(n_random_node=float("nan"))
+    # Anteil der Zufallsziehungen an allen Schritten des Walks. Die *Rate*,
+    # nicht die absolute Zahl: letztere waechst mit dem Budget und faerbte
+    # deshalb vor allem die x-Position ein. Die Rate ist ueber die Budgets
+    # hinweg vergleichbar und trennt genau das, worauf es ankommt -- bei DURW
+    # steuert w ueber w/(w + deg_Gu(v)) genau diesen Anteil.
+    #
+    # Je Lauf gerechnet und dann der Median, nicht Median durch Median: das
+    # waere bei ungleich langen Laeufen nicht dasselbe.
+    steps = pd.to_numeric(df.get("extra_n_samples"), errors="coerce")
+    df = df.assign(jump_rate=pd.to_numeric(df["n_random_node"], errors="coerce")
+                   / steps.where(steps > 0))
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
@@ -360,6 +371,7 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
             used_max=("queries_used", "max"),
             # fuer plot_comparison(jump_colours=True)
             jumps_median=("n_random_node", "median"),
+            jump_rate_median=("jump_rate", "median"),
         )
         .reset_index()
     )

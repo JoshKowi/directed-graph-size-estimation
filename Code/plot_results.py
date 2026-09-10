@@ -12,7 +12,7 @@ Beispiele:
     python plot_results.py --graphs Slashdot0811 --seed 7
     python plot_results.py --graphs gpt4_io --views undirected
     python plot_results.py --graphs gpt4_io --budgets 0.001 0.01 0.1
-    python plot_results.py --graphs gpt4_io --match uniform__w --jump-colours
+    python plot_results.py --graphs gpt4_io --match uniform__w --jump-rates
 
 Je Graph *und* Seed entsteht ein eigenes Bild: verschiedene Seeds sind
 verschiedene Durchlaeufe des Experiments und gehoeren nicht in dieselbe
@@ -62,12 +62,11 @@ def main() -> None:
                    help="nur diesen Lauf plotten (Default: jeden vorhandenen Seed)")
     p.add_argument("--start-node", default=None,
                    help="nur diesen Einstiegsknoten plotten (Default: jeden vorhandenen)")
-    p.add_argument("--jump-colours", "--jump-colors", action="store_true",
-                   dest="jump_colours",
-                   help="Punkte nach der Zahl der Zufallsziehungen einfaerben "
-                        "(n_random_node; bei DURW die Spruenge). Die "
-                        "Zugehoerigkeit zur Datenreihe traegt dann das Symbol "
-                        "statt der Farbe -- hoechstens 8 Estimators.")
+    p.add_argument("--jump-rates", action="store_true",
+                   help="je Legendenzeile den Sprunganteil ausweisen "
+                        "(n_random_node/extra_n_samples; bei DURW die "
+                        "Spruenge). Schwankt er ueber die Budgets um mehr als "
+                        "2 Prozentpunkte, steht die Spanne da.")
     p.add_argument("--intersect-budgets", action="store_true",
                    help="nur Budgets plotten, die fuer *jeden* gewaehlten Estimator "
                         "vorliegen (je Graph, Seed und Einstiegsknoten). Sonst zeigt "
@@ -117,7 +116,7 @@ def main() -> None:
             if rows.empty:      # diese Bedingung gibt es fuer den Graphen nicht
                 continue
             tag = results_io.seed_tag(seed) + results_io.start_tag(name, start)
-            kind = "ranges-jumps" if args.jump_colours else "ranges"
+            kind = "ranges-jumps" if args.jump_rates else "ranges"
             path = config.unique_path(
                 config.PLOTS_DIR / f"{name}__{tag}{kind}.png")
             # Spaltenreihenfolge aus VIEW_TITLES, nicht alphabetisch: sonst
@@ -128,7 +127,7 @@ def main() -> None:
                 estimators=sorted(rows["estimator"].unique()), views=views,
                 title=f"{config.graph_label(name)}: spread of size estimates "
                       "by edge view",
-                path=path, note=note, jump_colours=args.jump_colours)
+                path=path, note=note, jump_rates=args.jump_rates)
             print("  ->", path)
             print("  ->", results_io.save_results(
                 comparison[comparison["graph"] == name], name,
