@@ -231,6 +231,28 @@ NMMC_ALPHAS = (0.0, 1.0, 3.0, 10.0)
 # dort erreicht c_t das wahre c nie und die Konvergenzgarantie faellt.
 NMMC_C_UPDATE_P = 0.01
 
+# Agentenzahlen, fuer die eigene Registry-Eintraege entstehen
+# (estimators/__init__.py: wis-nmmc__<indeg>__k<K>__margin). Das Paper faehrt
+# in *jeder* Simulation 100 bis 10^4 Agenten -- ein einzelner Agent kommt dort
+# nicht vor. Anders als dort teilen sich die Agenten hier das Budget; geteilt
+# sind ausserdem Cache und die Online-Schaetzung des Eingangsgrades, eigen
+# bleibt je Agent die Historie (siehe sampling.nmmc).
+#
+# Gemessen auf Slashdot0811 gerichtet bei Budget 20 %, Ziel pi ~ d-:
+# 1 Agent 0,407 -- 10: 0,500 -- 50: 0,630 -- 200: 0,771. Der Gewinn kommt
+# kaum aus der Abdeckung (+15 %), sondern daraus, dass Scheinkollisionen
+# wegfallen: ein festsitzender Einzelagent besucht dieselben paar tausend
+# Knoten tausendfach, und der Kollisionsschaetzer zaehlt das als Treffer.
+NMMC_AGENTS = (1, 10, 100, 1000)
+
+# Untergrenze fuer die Aufteilung: so viele volle Nachbarabfragen muss ein
+# Agent zusaetzlich zu seinem Einstieg noch bezahlen koennen. Darunter ginge
+# das ganze Budget in Seed-Ziehungen -- auf Slashdot waeren es bei Budget
+# 0,1 % (77 Einheiten) und K = 1000 gerade 0,077 Einheiten je Agent. Der
+# Sampler kappt K deshalb; wie viele Agenten wirklich liefen, steht als
+# n_random_node in der Ergebnis-CSV (s. sampling.nmmc).
+NMMC_MIN_STEPS_PER_AGENT = 5
+
 # Partnergraph fuer die kreuzweise In-Grad-Schaetzung
 # (sampling.indegree.CrossInDegree): fuer einen Lauf auf gpt4_io liefert
 # gpt4o_io die Eingangsgrade und umgekehrt. Die beiden GPT-Basen teilen sich
@@ -269,6 +291,12 @@ DEFAULT_BUDGETS = (0.001, 0.005, 0.01, 0.05, 0.10, 0.20)
 
 # Wiederholungen je (Estimator, Budget).
 DEFAULT_N_RUNS = 10
+
+# Besuchs-CSV (nur mit --visits): ab dieser Groesse faengt die naechste
+# Teildatei an -- <graph>__...visits.csv, dann ...visits.2.csv, .3.csv, ...
+# Verhindert die eine unbegrenzt wachsende Datei und das Neu-Einlesen mehrerer
+# GB je Lauf (siehe experiment/results.py: append_visits).
+VISITS_MAX_BYTES = 2_000_000_000        # ~2 GB
 
 # Ab dieser Knotenzahl gilt ein Graph als gross: dort faellt das 20-%-Budget
 # weg. Grund ist reine Rechenzeit -- auf Slashdot0811 entfallen 63 % aller
