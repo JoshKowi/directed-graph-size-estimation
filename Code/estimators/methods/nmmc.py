@@ -21,6 +21,12 @@ Die austauschbaren Achsen:
     alpha       -- Gedaechtnis der Umverteilung, w_k = k^alpha
                    (config.NMMC_ALPHA)
     c_update_p  -- p aus Algorithmus 2 (config.NMMC_C_UPDATE_P)
+    n_agents    -- Zahl der Agenten (config.NMMC_AGENTS). Sie teilen sich
+                   Budget, Cache und die d--Schaetzung, haben aber je eine
+                   eigene Historie -- Details in sampling.nmmc.
+    shared_c    -- laesst c_t ueber die Agenten stehen statt es je Agent auf 1
+                   zurueckzusetzen. Vom Paper nicht gedeckt, aber die
+                   Gegenprobe dazu.
     thinning    -- "none" | "simple" | "shifted"    (sampling.thinning)
     margin      -- Safety Margin wie dort (estimators.formulas). 0 = aus.
     formula     -- "uis-collision" | "wis-col-katzir"
@@ -80,6 +86,8 @@ def build(
     c_update_p: float = config.NMMC_C_UPDATE_P,
     n_seeds: int = 1,
     burn_in: int = 0,
+    n_agents: int = 1,
+    shared_c: bool = False,
     aggregate=np.median,
 ) -> PipelineEstimator:
     if target == "uniform" and FORMULAS[formula].weighted:
@@ -89,25 +97,37 @@ def build(
             "alle 1 und die Formel rechnete dasselbe wie 'uis-collision'. "
             "Gemeint ist vermutlich target='indeg'."
         )
+    if shared_c and n_agents == 1:
+        raise ValueError(
+            "shared_c ist mit n_agents=1 bedeutungslos -- es gibt nur ein c_t. "
+            "Entweder n_agents > 1 setzen oder shared_c weglassen.")
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     weighting = (InDegreeWeighting() if FORMULAS[formula].weighted
                  else UniformWeighting())
 
-    return PipelineEstimator(
+    est = PipelineEstimator(
         # alpha nur dann im Namen, wenn es vom Default abweicht -- wie das w
         # bei DURW. Fuer Laeufe ueber die Registry ist der Name ohnehin
         # kosmetisch (estimators.build() ueberschreibt ihn), fuer Direktaufrufe
         # aus einem Notebook nicht.
         name=f"nmmc__{target}__{formula}__{indeg}__{thinning}"
              + (f"__a{alpha:g}" if alpha != config.NMMC_ALPHA else "")
+             + (f"__k{n_agents}" if n_agents != 1 else "")
+             + ("__sharedc" if shared_c else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=INDEG_ORACLES[indeg],
         sampler=NmmcSampler(target=target, indeg=IN_DEGREES[indeg](),
                             alpha=alpha, c_update_p=c_update_p,
-                            n_seeds=n_seeds, burn_in=burn_in),
+                            n_seeds=n_seeds, burn_in=burn_in,
+                            n_agents=n_agents, shared_c=shared_c),
         weighting=weighting,
         formula=FORMULAS[formula](margin=margin),
         thinning=thin,
         aggregate=aggregate,
     )
+    # Mit mehreren Agenten liest der Sampler oracle.budget, um die Grenzen zu
+    # setzen -- ein Praefix ist dann nicht mehr bitgleich mit einem
+    # eigenstaendigen kuerzeren Lauf. Dasselbe Muster wie capture_recapture.
+    est.supports_nested = (n_agents == 1)
+    return est

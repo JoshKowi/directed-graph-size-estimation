@@ -229,6 +229,28 @@ python plot_results.py --graphs gpt4o_io --views directed \
     --match 'durw-indeg-gpt4_io__n100000__w' 'wis-durw__uniform__margin$' 'uniform-collision$'
 
 
+DURW overshoot:
+
+python run_experiment.py --graphs gpt4o-io --views directed --estimators wis-durw__uniform__margin durw-indeg-gpt4_io__n1000000__b0__margin durw-top-q__n1000000__b0__margin --budgets 0.001 0.005 0.01 0.02 0.05 0.1 0.02 0.05 1.0
+
+
+python run_experiment.py --graphs gpt4-io --views directed --estimators wis-durw__uniform__margin durw-indeg-gpt4_io__n1000000__b0__margin durw-top-q__n1000000__b0__margin --budgets 0.001 0.005 0.01 0.02 0.05 0.1 0.2 0.5 1.0 --no-visits
+
+-> falsch, ich brauche das korrigierte gewicht:
+
+python run_experiment.py --graphs gpt-4o-io --views directed \
+    --estimators  durwset-indeg-gpt4_io__n1000000__b0__margin \
+                 durwset-top-q__n1000000__b0__margin \
+    --budgets 0.1 0.2 0.5 1.0 --runs 10 --checkpoint-budgets --share-walks --no-visits
+
+    python run_experiment.py --graphs gpt-4-io --views directed \
+    --estimators  durwset-indeg-gpt4o_io__n1000000__b0__margin \
+                 durwset-top-q__n1000000__b0__margin \
+    --budgets 0.1 0.2 0.5 1.0 --runs 10 --checkpoint-budgets --share-walks --no-visits
+
+
+  
+
 ===============================================================================
  NMMC AUSPROBIEREN  (Non-Markovian Monte Carlo, Lee/Kang/Eun 2019)
 ===============================================================================
@@ -309,6 +331,12 @@ python plot_results.py --graphs gpt4_io --views directed \
     --match 'nmmc-uni__online__a' 'uniform-collision$'
 
 
+python run_experiment.py --graph slashdot --budgets 0.001 0.005 0.01 0.02 0.05 0.1 0.2 0.5 1 2 --estimators wis-nmmc__online__a0__margin  wis-nmmc__online__a1__margin \
+                 wis-nmmc__online__a3__margin  wis-nmmc__online__a10__margin \ wis-nmmc__exact__a0__margin  wis-nmmc__exact__a1__margin \
+                 wis-nmmc__exact__a3__margin  wis-nmmc__exact__a10__margin
+                 --runs 10 --checkpoint-budgets \
+    --jobs 12 --no-visits
+
 -------------------------------------------------------------------------------
  C  Thinning-Slot  (none | simple | shifted), nur indeg=online
 -------------------------------------------------------------------------------
@@ -357,3 +385,12 @@ python nmmc_trace.py --graph gpt4o_io --runs 10 --budget 0.01 --jobs 8
 python nmmc_trace.py --graph gpt4_io --indeg online --target indeg --alpha 3 \
     --budget 0.01 --jobs 8
 python nmmc_trace.py --graph slashdot --plot-only        # nur neu zeichnen
+
+
+
+
+
+
+
+
+

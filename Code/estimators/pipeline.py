@@ -200,9 +200,12 @@ def estimate_group(estimators, graph: Graph, budgets, rng: random.Random
                                     for e in estimators):
         raise ValueError(
             "Mehrere Budgets aus einem Lauf gehen nur, wenn die Ziehung nicht "
-            "vom Budget abhaengt. Hier nicht der Fall (capture_recapture "
-            "schaltet bei der Haelfte des Gesamtbudgets um) -- je Budget einzeln "
-            "aufrufen."
+            "vom Budget abhaengt (supports_nested). Hier nicht der Fall -- "
+            "capture_recapture schaltet bei einem Anteil des Gesamtbudgets auf "
+            "den naechsten Fang um, NMMC mit mehreren Agenten ebenso. Je Budget "
+            "einzeln aufrufen. Betroffen: "
+            + ", ".join(sorted(e.name for e in estimators
+                               if not getattr(e, "supports_nested", False)))
         )
     top = budgets[-1]
     owner = estimators[0]

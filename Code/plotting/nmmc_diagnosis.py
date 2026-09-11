@@ -50,8 +50,13 @@ def plot_nmmc_trace(df, path: Path | None = None) -> Path:
     budget_rel = float(df["budget_rel"].iloc[0])
     alpha = float(df["alpha"].iloc[0])
     views = [v for v in VIEW_TITLES if v in set(df["view"])]
-    variants = sorted({(r.indeg, r.target) for r in df.itertuples()})
-    labels = [f"{i}\n{t}" for i, t in variants]
+    # Die Agentenzahl gehoert in die Achse, sobald mehr als eine vorkommt --
+    # sonst legte der Plot Laeufe mit 1 und mit 1000 Agenten uebereinander.
+    agents = sorted(set(df["agents"])) if "agents" in df else [1]
+    variants = sorted({(r.indeg, r.target, getattr(r, "agents", 1))
+                       for r in df.itertuples()})
+    labels = [f"{i}\n{t}" + (f"\nK={k}" if len(agents) > 1 else "")
+              for i, t, k in variants]
 
     fig, axes = plt.subplots(1, len(PANELS), figsize=(4.4 * len(PANELS), 4.2))
     fig.patch.set_facecolor(SURFACE)
@@ -62,9 +67,12 @@ def plot_nmmc_trace(df, path: Path | None = None) -> Path:
         apply_axes_style(ax)
         for vi, view in enumerate(views):
             med, lo, hi = [], [], []
-            for indeg, target in variants:
-                sel = df[(df["view"] == view) & (df["indeg"] == indeg)
-                         & (df["target"] == target)][col].to_numpy(dtype=float)
+            for indeg, target, k in variants:
+                rows = df[(df["view"] == view) & (df["indeg"] == indeg)
+                          & (df["target"] == target)]
+                if "agents" in df:
+                    rows = rows[rows["agents"] == k]
+                sel = rows[col].to_numpy(dtype=float)
                 med.append(np.median(sel) if sel.size else np.nan)
                 lo.append(sel.min() if sel.size else np.nan)
                 hi.append(sel.max() if sel.size else np.nan)
@@ -86,7 +94,10 @@ def plot_nmmc_trace(df, path: Path | None = None) -> Path:
     axes[0].legend(frameon=False, fontsize=9, labelcolor=INK_MUTED)
     fig.suptitle(f"NMMC-Diagnose -- {config.graph_label(graph)}",
                  color=INK, fontsize=13, y=0.99)
-    fig.text(0.99, 0.985, f"Budget {budget_rel:g}, alpha {alpha:g}, Seed {seed}",
+    shared = bool(df["shared_c"].iloc[0]) if "shared_c" in df else False
+    fig.text(0.99, 0.985,
+             f"Budget {budget_rel:g}, alpha {alpha:g}, Seed {seed}"
+             + (", c_t geteilt" if shared else ""),
              ha="right", va="top", fontsize=8, color=INK_MUTED)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
 

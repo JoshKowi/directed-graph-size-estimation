@@ -1,8 +1,9 @@
 """CLI: Experiment fuer einen oder mehrere Graphen ausfuehren.
 
 Laedt jeden Graphen genau einmal, laesst alle gewaehlten Estimators fuer alle
-Budgets je n-mal laufen und schreibt Ergebnisse + Besuchsstatistik nach
-data/results/.
+Budgets je n-mal laufen und schreibt die Ergebnisse nach data/results/. Die
+Besuchshaeufigkeit je Knoten faellt nur mit `--visits` an (teuer, wird von
+keiner Auswertung automatisch gelesen).
 
 Beispiele:
     python run_experiment.py --list
@@ -144,7 +145,14 @@ def main() -> None:
                         "vorhandene Ergebnisse daher nicht.")
     p.add_argument("--jobs", type=int, default=config.DEFAULT_N_JOBS,
                    help="Parallele Prozesse je View (1 = sequentiell)")
-    p.add_argument("--no-visits", action="store_true", help="Besuchsstatistik nicht speichern")
+    p.add_argument("--visits", action="store_true",
+                   help="Besuchshaeufigkeit je Knoten mitschreiben "
+                        "(<graph>__...visits.csv, ab config.VISITS_MAX_BYTES auf "
+                        "Teildateien ...visits.2.csv usw. verteilt). Teuer bei "
+                        "grossen Graphen (zig Mio Zeilen, GB an CSV) und wird von "
+                        "keiner Auswertung automatisch gelesen -- nur fuer "
+                        "gezielte Walk-Diagnose (siehe diagnose_walk.py). "
+                        "Default: aus.")
     p.add_argument("--replace", action="store_true",
                    help="schon vorhandene Laeufe neu rechnen und ersetzen, statt "
                         "sie zu ueberspringen")
@@ -267,7 +275,7 @@ def main() -> None:
             n_runs=args.runs,
             seed=args.seed,
             views=args.views,
-            collect_visits=not args.no_visits,
+            collect_visits=args.visits,
             n_jobs=args.jobs,
             nested_budgets=args.checkpoint_budgets,
             share_walks=args.share_walks,
@@ -288,8 +296,11 @@ def main() -> None:
             if visits is not None:
                 vpart = (visits[visits["start_node"] == start]
                          if start is not None else visits)
-                print("  ->", save(vpart, name, kind="visits",
-                                   seed=args.seed, start=start))
+                # visits nie dedupen/umsortieren -- nur anhaengen, GB-weise
+                # auf Teildateien (siehe results_io.append_visits).
+                print("  ->", results_io.append_visits(
+                    vpart, name, seed=args.seed, start=start,
+                    replace=args.replace))
         loader.clear_cache()
 
     # Ordner-README aktuell halten -- sonst steht sie nach dem naechsten Lauf falsch da

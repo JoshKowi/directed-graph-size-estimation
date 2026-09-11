@@ -100,11 +100,11 @@ def main() -> None:
 
     # Seed *und* Einstiegsknoten trennen Bedingungen -- je Paar ein Bild.
     for seed, start in results_io.conditions_available(df):
-        part = df[(df["seed"] == seed) & (df["start_node"] == start)]
+        part = results_io.select_condition(df, seed, start)
         summary = results_io.summarize(part)
         comparison = results_io.compare_views(part)
         note = f"seed {seed}"
-        if start is not None:
+        if pd.notna(start):
             note += f"  |  start: {start}"
         if summary["nested"].any():      # Punkte je Lauf dann korreliert
             note += "  |  nested budgets"

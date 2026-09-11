@@ -103,11 +103,13 @@ def true_c(view, target: str, indeg: str) -> float:
 
 
 def run_trace(view, rng: random.Random, budget_abs: int, indeg: str,
-              target: str, alpha: float) -> dict:
+              target: str, alpha: float, agents: int = 1,
+              shared_c: bool = False) -> dict:
     """Ein Lauf mit eingeschalteter Diagnose."""
     oracle = INDEG_ORACLES[indeg](view, rng, budget_abs,
                                   config.DEFAULT_BUDGET_METRIC)
-    sampler = NmmcSampler(target=target, indeg=IN_DEGREES[indeg](), alpha=alpha)
+    sampler = NmmcSampler(target=target, indeg=IN_DEGREES[indeg](), alpha=alpha,
+                          n_agents=agents, shared_c=shared_c)
     stats: dict = {}
     trace = sampler.sample(oracle, stats=stats)
 
@@ -116,6 +118,9 @@ def run_trace(view, rng: random.Random, budget_abs: int, indeg: str,
     d_hat = np.array([s.degree for s in trace], dtype=float) if trace else np.zeros(1)
     return {
         "budget_abs": budget_abs,
+        # Wie viele Agenten wirklich liefen: bei kleinem Budget kappt der
+        # Sampler die Zahl (s. sampling.nmmc).
+        "agents_eff": stats["agents_eff"],
         "steps": stats["steps"],
         "n_samples": len(trace),
         "n_unique": oracle.unique_nodes,
@@ -146,9 +151,11 @@ _VIEW = None
 
 
 def _run_one(task):
-    run_idx, seed_str, budget_abs, indeg, target, alpha = task
-    res = run_trace(_VIEW, random.Random(seed_str), budget_abs, indeg, target, alpha)
-    res.update(run=run_idx, indeg=indeg, target=target, alpha=alpha)
+    run_idx, seed_str, budget_abs, indeg, target, alpha, agents, shared_c = task
+    res = run_trace(_VIEW, random.Random(seed_str), budget_abs, indeg, target,
+                    alpha, agents, shared_c)
+    res.update(run=run_idx, indeg=indeg, target=target, alpha=alpha,
+               agents=agents, shared_c=shared_c)
     return res
 
 
@@ -173,10 +180,11 @@ def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
 
         tasks = [
             (run_idx,
-             f"{args.seed}|nmmc-trace|{indeg}|{target}|{args.alpha:g}|{view_name}|{run_idx}",
-             budget_abs, indeg, target, args.alpha)
+             f"{args.seed}|nmmc-trace|{indeg}|{target}|{args.alpha:g}|{k}"
+             f"|{int(args.shared_c)}|{view_name}|{run_idx}",
+             budget_abs, indeg, target, args.alpha, k, args.shared_c)
             for indeg in args.indeg for target in args.target
-            for run_idx in range(args.runs)
+            for k in args.agents for run_idx in range(args.runs)
         ]
 
         _VIEW = view
@@ -199,11 +207,14 @@ def _compute_graph(args, graph_name: str, code: str) -> pd.DataFrame:
 
         for indeg in args.indeg:
             for target in args.target:
-                sel = [r for r in results if r["indeg"] == indeg and r["target"] == target]
+              for k in args.agents:
+                sel = [r for r in results if r["indeg"] == indeg
+                       and r["target"] == target and r["agents"] == k]
                 med = lambda k: float(np.median([r[k] for r in sel]))  # noqa: E731
                 ratio = med("c_ratio")
                 ratio_s = f"{ratio:6.3f}" if ratio == ratio else "     -"
                 print(f"  [{graph.name}/{view_name}] {indeg:12s} {target:7s} "
+                      f"K={k:<5d} "
                       f"Annahme {med('acc_rate'):6.3f}  d-=1 bei {med('frac_dinhat_1'):6.3f}  "
                       f"c_t/c {ratio_s}  Schritte {med('steps'):,.0f}"
                       .replace(",", " "))
@@ -251,6 +262,12 @@ def main() -> None:
                    help="Herkunft des Eingangsgrades (Default: beide)")
     p.add_argument("--target", nargs="+", default=list(TARGETS), choices=list(TARGETS),
                    help="Zielverteilung der QSD (Default: beide)")
+    p.add_argument("--agents", nargs="+", type=int, default=[1],
+                   help="Zahl der Agenten je Lauf (Default: 1); mehrere Werte "
+                        "ergeben ein Kreuzprodukt")
+    p.add_argument("--shared-c", action="store_true",
+                   help="c_t ueber alle Agenten stehen lassen statt je Agent "
+                        "auf 1 zurueckzusetzen (Gegenprobe, s. sampling.nmmc)")
     p.add_argument("--alpha", type=float, default=config.NMMC_ALPHA,
                    help=f"Gedaechtnis der Umverteilung (Default: {config.NMMC_ALPHA:g})")
     p.add_argument("--budget", type=float, default=0.05,
@@ -276,7 +293,8 @@ def main() -> None:
             graph_name = config.resolve_graph(g)
             df = results_io.load_results(graph_name, kind=KIND, seed=args.seed,
                                          start=args.start_node)
-            df = df[df["indeg"].isin(args.indeg) & df["target"].isin(args.target)]
+            df = df[df["indeg"].isin(args.indeg) & df["target"].isin(args.target)
+                    & df["agents"].isin(args.agents)]
             if df.empty:
                 raise SystemExit(f"Keine {KIND}-Zeilen fuer {graph_name} "
                                  f"(seed={args.seed})")

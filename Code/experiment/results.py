@@ -40,6 +40,8 @@ Schnittstelle:
     seed_tag(seed) -> str
     start_tag(graph, start_node) -> str
     parse_stem(stem) -> (graph, seed, start, kind)
+    conditions_available(df) -> [(seed, start), ...]
+    select_condition(df, seed, start) -> pd.DataFrame  (NaN-sicher)
     save_results(df, graph_name, kind="estimates", seed=None, start=None) -> Path
     load_results(graph_name=None, kind="estimates", seed=None, start=None)
         -> pd.DataFrame
@@ -316,6 +318,19 @@ def conditions_available(df: pd.DataFrame) -> list[tuple]:
     # die Paare selbst bleiben unveraendert, nur ihre Reihenfolge aendert sich
     # ggf. zwischen numerisch und lexikografisch sortierten start_node-Werten.
     return sorted(items, key=lambda t: (t[0], str(t[1])))
+
+
+def select_condition(df: pd.DataFrame, seed, start) -> pd.DataFrame:
+    """Zeilen zu einem (Seed, Einstiegsknoten)-Paar aus conditions_available().
+
+    Nicht per `df["start_node"] == start`: Graphen ohne feste Einstiegsknoten
+    (gleichverteilter Einstieg, z. B. wiki-topcats) stehen mit `start_node =
+    NaN` in der Spalte, und NaN == NaN ist False -- die naive Filterung liefert
+    dort immer 0 Zeilen, ohne Fehler oder Hinweis.
+    """
+    start_mask = (df["start_node"].isna() if pd.isna(start)
+                  else df["start_node"] == start)
+    return df[(df["seed"] == seed) & start_mask]
 
 
 def summarize(df: pd.DataFrame) -> pd.DataFrame:

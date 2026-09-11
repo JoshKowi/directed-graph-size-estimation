@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import argparse
 
+import pandas as pd
+
 import config
 from experiment import results as results_io
 from plotting.compare import plot_comparison
@@ -109,13 +111,13 @@ def main() -> None:
         # Seed *und* Einstiegsknoten trennen Bedingungen -- je Paar ein Bild.
         for seed, start in (results_io.conditions_available(df)
                             or [(config.DEFAULT_SEED, None)]):
-            part = df[(df["seed"] == seed) & (df["start_node"] == start)]
+            part = results_io.select_condition(df, seed, start)
             summary = results_io.summarize(part)
             tag = results_io.seed_tag(seed) + results_io.start_tag(graph, start)
             # Genestete Budgets gehoeren ins Bild: die Punkte einer Zeile sind
             # dann nicht unabhaengig voneinander (siehe experiment/runner.py).
             note = f"seed {seed}"
-            if start is not None:
+            if pd.notna(start):
                 note += f"  |  start: {start}"
             if summary["nested"].any():
                 note += "  |  nested budgets"

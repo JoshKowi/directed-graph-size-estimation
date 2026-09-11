@@ -57,6 +57,12 @@ Die Ergebnisse sind vom Grad der Parallelisierung unabhaengig: der Seed haengt
 nur an (Estimator, Budget, Lauf), nicht an der Ausfuehrungsreihenfolge. Die
 Zeilen werden am Ende sortiert, damit auch die CSV reproduzierbar ist.
 
+`collect_visits` (Default False) sammelt zusaetzlich je (Budget, Estimator)
+einen Knoten-Besuchszaehler und gibt ihn als zweiten Frame zurueck. Das kostet
+bei den grossen Graphen zig Mio Zeilen und eine mehrere GB grosse Zwischen-
+Liste im RAM -- der CLI-Schalter dafuer ist `--visits`, aus gutem Grund
+opt-in.
+
 Schnittstelle:
     run_graph(graph, estimators, budgets, n_runs, seed, views, collect_visits,
               n_jobs, nested_budgets, share_walks, start_nodes, skip_keys, code,
@@ -197,7 +203,7 @@ def run_graph(
     n_runs: int = config.DEFAULT_N_RUNS,
     seed: int = config.DEFAULT_SEED,
     views=config.DEFAULT_VIEWS,
-    collect_visits: bool = True,
+    collect_visits: bool = False,
     n_jobs: int = config.DEFAULT_N_JOBS,
     nested_budgets: bool = False,
     share_walks: bool = False,

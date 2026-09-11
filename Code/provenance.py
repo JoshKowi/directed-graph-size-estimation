@@ -144,16 +144,23 @@ def _results_readme() -> str:
     for path in sorted(config.RESULTS_DIR.glob("*.csv")):
         graph, seed, start, kind = results_io.parse_stem(path.stem)
         label = config.graph_label(graph)
+        if kind == "visits" and re.search(r"visits\.\d+$", path.stem):
+            continue          # Teildatei -- zaehlt beim Basiseintrag mit
         parts.append(f"### `{path.name}`")
         parts.append("")
         if kind == "visits":
-            # Nicht einlesen: die Besuchs-CSV ist bei gpt4o_io fast 1 GB gross
+            # Nicht einlesen: die Besuchs-CSV ist bei gpt4o_io mehrere GB gross
             # und es wird nur die Zeilenzahl gebraucht. Ein voller read_csv
             # haengte jedem Experiment- und Plot-Lauf zweistellige Sekunden an.
+            # Basisdatei + eventuelle Teildateien (...visits.2.csv, ...) zusammen.
+            series = results_io._visits_series(path)
+            n_rows = sum(_count_rows(p) for p in series)
+            more = (f" (+ {len(series) - 1} Teildatei(en))" if len(series) > 1
+                    else "")
             parts += [f"Besuchshaeufigkeit je Original-Knotenname fuer **{label}** "
-                      f"(Seed {seed}), {_num(_count_rows(path))} Zeilen. Faellt beim "
-                      "selben Lauf ab wie die Schaetzungen (`--no-visits` schaltet "
-                      "sie aus).", ""]
+                      f"(Seed {seed}), {_num(n_rows)} Zeilen{more}. Faellt beim "
+                      "selben Lauf ab wie die Schaetzungen (`--visits` schaltet "
+                      "sie ein, Default: aus).", ""]
             continue
         try:
             df = pd.read_csv(path)
