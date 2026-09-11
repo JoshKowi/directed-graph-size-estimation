@@ -1,7 +1,7 @@
 """Oracle, dessen Zufallssprung nur eine zufaellige Teilmenge S von V trifft.
 
 Zweck: die Sprungvarianten fuer externe Namenslisten (durwset-*, durwhist-*,
-siehe sampling.durw) auf *jedem* Graphen testen -- auch dort, wo es keine
+durwunion-*, siehe sampling.durw) auf *jedem* Graphen testen -- auch dort, wo es keine
 Liste gibt (Slashdot0811, wiki-topcats haben numerische Knotennamen) --, und
 auf den GPT-Graphen unabhaengig davon, *welche* Knoten eine echte Liste
 trifft. Die echten Listen treffen eine gradverzerrte Teilmenge; hier ist S
@@ -41,7 +41,8 @@ Schnittstelle:
     subset_size(n, percent) -> int
     jump_set(graph, percent, seed) -> (ids, mask)
     class RandomSubsetOracle(CrawlOracle) -- random_node(), in_jump_set(),
-        jump_multiplicity(), list_mass(), seed_nodes()
+        jump_multiplicity(), list_mass(), seed_nodes(), list_length(),
+        list_entry()
 """
 
 from __future__ import annotations
@@ -123,6 +124,16 @@ class RandomSubsetOracle(CrawlOracle):
 
     def random_node(self):
         u = int(self._ids[self.rng.randrange(self._k)])
+        self._charge(u, self.cost_random_node)
+        self.n_random_node += 1
+        return u
+
+    def list_length(self) -> int:
+        return self._k
+
+    def list_entry(self, i: int):
+        """Position i der "Liste" S -- trifft immer (s. NameListOracle)."""
+        u = int(self._ids[i])
         self._charge(u, self.cost_random_node)
         self.n_random_node += 1
         return u

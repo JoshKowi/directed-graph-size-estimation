@@ -63,6 +63,25 @@ davon unberuehrt -- er merkt sich je Sample nur, ob der Knoten in S liegt
 weighting.DurwWeighting (Original, S = V) bzw.
 weighting.DurwJumpSetWeighting (Variante).
 
+**`union_jumps` (durwunion-*): Sprung gleichverteilt auf S u H.** Die Liste S
+enthaelt jeden Knoten nur einmal (oracles.name_list.unique_index) und wird
+waehrend des Laufs um jeden besuchten Knoten ergaenzt, der nicht darin steht
+(H = verschiedene besuchte Knoten). Ein Sprung zieht eine Position dieser
+erweiterten Liste gleichverteilt; ist es eine Niete, wird die *ganze* Ziehung
+wiederholt -- ueber Liste und Historie, nicht nur ueber die Liste. Damit landet
+der Sprung exakt gleichverteilt auf S u H, ohne dass die Trefferzahl der
+Liste bekannt sein muss.
+
+Absprungregel w/(w + deg_Gu) und Gewicht 1/(w + deg_Gu) bleiben die des
+Originals: sigma hat zu jedem Knoten in S u H eine Kante w, und jeder
+besuchte Knoten liegt in H. Das ist die kleinstmoegliche Abweichung vom Paper
+-- sigma ist mit S u H statt mit V verbunden -- und faellt bei S = V exakt auf
+das Original zurueck. Anders als history_jumps zaehlt ein Knoten in S n H nur
+einmal; sein sigma-Gewicht aendert sich also nie, nur Knoten ausserhalb von S
+bekommen ihre sigma-Kante beim Erstbesuch. Grenze: Knoten, die weder in S
+liegen noch von dort ueber Kanten erreichbar sind, besucht der Walk nie; die
+Schaetzung laeuft dann gegen deren Komplement, nicht gegen |V|.
+
 Wichtig fuer alles, was danach kommt: `Sample.degree` traegt hier den Grad in
 G_u, *nicht* den Ausgangsgrad wie bei RandomWalkSampler. InverseDegreeWeighting
 passt damit nicht zu DURW -- die richtige Gewichtung ist DurwWeighting.
@@ -109,6 +128,7 @@ class DurwSampler(Sampler):
         burn_in: int = 0,
         history_jumps: bool = False,
         history_weight: float = 1.0,
+        union_jumps: bool = False,
     ) -> None:
         self.jump = jump or UniformJump()
         self.jump_weight = float(jump_weight)
@@ -128,6 +148,10 @@ class DurwSampler(Sampler):
             raise ValueError(
                 f"history_weight muss > 0 sein, ist {self.history_weight}: bei 0 "
                 "koennten Knoten ausserhalb von S nicht mehr springen.")
+        # Sprung gleichverteilt auf S u H -- s. Modul-Docstring, `union_jumps`.
+        self.union_jumps = bool(union_jumps)
+        if self.union_jumps and self.history_jumps:
+            raise ValueError("union_jumps und history_jumps schliessen sich aus.")
         self.name = f"durw_{self.jump.name}"
 
     def key(self) -> str:
@@ -136,7 +160,32 @@ class DurwSampler(Sampler):
                 f"|walks{self.n_walks}|burn{self.burn_in}")
         # Nur wenn eingeschaltet -- sonst bleibt der Schluessel der alten
         # Estimators unveraendert und ihre Walk-Gruppen stimmen weiter.
-        return base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
+        return (base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
+                + ("|union" if self.union_jumps else ""))
+
+    @staticmethod
+    def _union_target(oracle, outside: list[int]) -> int:
+        """Sprungziel gleichverteilt auf S u H.
+
+        Die erweiterte Liste ist: die Positionen der Liste (Nieten
+        eingeschlossen), dahinter die besuchten Knoten ausserhalb von S. Eine
+        Position wird gleichverteilt gezogen; bei einer Niete beginnt die
+        *ganze* Ziehung neu. Jeder Knoten aus S u H steht genau einmal darin,
+        das Ziel ist also gleichverteilt darauf -- und dafuer muss niemand
+        wissen, wie viele Listennamen treffen.
+
+        Die Liste kostet wie jede Ziehung (Treffer COST_RANDOM_NODE, Niete
+        COST_DRAW_MISS); ein Knoten aus der Historie ist eigenes Wissen und
+        kostet nichts, die Nachbarabfrage bei Ankunft ist ein Cache-Treffer.
+        """
+        n_list = oracle.list_length()
+        while True:
+            i = oracle.rng.randrange(n_list + len(outside))
+            if i >= n_list:
+                return outside[i - n_list]
+            u = oracle.list_entry(i)
+            if u is not None:
+                return u
 
     def sample(self, oracle) -> list[Sample]:
         w = self.jump_weight
@@ -162,6 +211,10 @@ class DurwSampler(Sampler):
                 # das sigma-Gewicht eines Knotens bei jedem Wiederbesuch und
                 # froere nicht mehr ein.
                 visited: list[int] = []
+                # Nur fuer union_jumps: besuchte Knoten *ausserhalb* von S, in
+                # Besuchsreihenfolge -- der Teil der erweiterten Liste, der
+                # nicht schon in der Liste steht.
+                outside: list[int] = []
                 u = int(oracle.seed_nodes(self.n_seeds)[0])
                 step = 0
                 jumped = False   # der Seed selbst ist kein Sprungziel
@@ -184,6 +237,8 @@ class DurwSampler(Sampler):
                             back.setdefault(v, []).append(u)
                         if self.history_jumps:
                             visited.append(u)
+                        if self.union_jumps and not oracle.in_jump_set(u):
+                            outside.append(u)
                     nbrs = adj[u]
 
                     if step >= self.burn_in:
@@ -209,7 +264,12 @@ class DurwSampler(Sampler):
                     if not self.history_jumps:
                         # Original-DURW: jeder Knoten springt mit w/(w + deg).
                         jumped = oracle.rng.random() < w / (w + len(nbrs))
-                        if jumped:
+                        # union_jumps aendert nur das *Ziel*: die Absprungregel
+                        # bleibt die des Originals (jeder besuchte Knoten liegt
+                        # in H, hat also genau eine sigma-Kante w).
+                        if jumped and self.union_jumps:
+                            u = int(self._union_target(oracle, outside))
+                        elif jumped:
                             u = int(self.jump.next_node(oracle))
                         else:
                             u = nbrs[oracle.rng.randrange(len(nbrs))]

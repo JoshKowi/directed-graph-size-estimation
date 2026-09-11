@@ -38,10 +38,11 @@ Schnittstelle:
     load_index(graph_name, source) -> np.ndarray
     jump_set_mask(graph, source, limit) -> np.ndarray
     jump_multiplicity_array(graph, source, limit) -> np.ndarray
+    unique_index(graph_name, source, limit) -> np.ndarray
     index_meta(graph_name, source) -> dict
     available(graph_name) -> list[str]
     class NameListOracle(Oracle)  -- random_node(), neighbors(), degree(),
-                                     seed_nodes()
+                                     seed_nodes(), list_length(), list_entry()
 """
 
 from __future__ import annotations
@@ -70,6 +71,9 @@ _MASKS: dict[tuple[str, str, int | None], np.ndarray] = {}
 # treffen ihn. uint16 statt int64: das Maximum liegt bei 40 (top-q), und bei
 # 6,5 Mio Knoten sind das 13 MB gegen 52 MB.
 _MULTS: dict[tuple[str, str, int | None], np.ndarray] = {}
+
+# Index ohne Mehrfachtreffer je (Graph, Quelle, Laenge), s. unique_index.
+_UNIQUE: dict[tuple[str, str, int | None], np.ndarray] = {}
 
 
 def _path(graph_name: str, source: str):
@@ -138,6 +142,39 @@ def jump_multiplicity_array(graph, source: str,
     return arr
 
 
+def unique_index(graph_name: str, source: str,
+                 limit: int | None = None) -> np.ndarray:
+    """Der (geschnittene) Index, in dem jeder Knoten nur *einmal* vorkommt.
+
+    Behalten wird je Knoten die erste Position, die ihn trifft; die Reihenfolge
+    der Liste bleibt, damit ein Praefix weiter "die prominentesten" meint. Das
+    ist real umsetzbar: der Index gleicht *normalisierte* Namen ab
+    (namelists, NFC + casefold), verschiedene normalisierte Namen treffen also
+    verschiedene Knoten, und Doppelte unter den normalisierten Namen kann ein
+    Crawler vorab streichen, ohne den Graphen zu fragen.
+
+    Nieten (-1) bleiben alle stehen: der Index kennt ihren Namen nicht, und ob
+    zwei Nieten derselbe Name waren, ist nicht mehr festzustellen. Das kann
+    die Fehlschlagkosten leicht ueberzeichnen, die Landeverteilung beruehrt es
+    nicht (sie haengt nur an den Treffern).
+
+    Gebraucht von durwunion-* (sampling.durw): dort muss der Sprung
+    gleichverteilt auf S landen, nicht proportional zur Vielfachheit.
+    """
+    key = (graph_name, source, limit)
+    arr = _UNIQUE.get(key)
+    if arr is None:
+        idx = load_index(graph_name, source)
+        if limit is not None:
+            idx = idx[:limit]
+        keep = idx == MISS
+        _, first = np.unique(idx, return_index=True)
+        keep[first] = True          # erste Position je Knoten (und eine Niete)
+        arr = idx[keep]
+        _UNIQUE[key] = arr
+    return arr
+
+
 def index_meta(graph_name: str, source: str) -> dict:
     p = _path(graph_name, source).with_suffix(".json")
     return json.loads(p.read_text()) if p.exists() else {}
@@ -185,7 +222,8 @@ class NameListOracle(Oracle):
 
     def __init__(self, *args, source: str, limit: int | None = None,
                  burn_in: int = config.DEFAULT_DRAW_BURN_IN,
-                 cost_miss: float = config.COST_DRAW_MISS, **kwargs) -> None:
+                 cost_miss: float = config.COST_DRAW_MISS,
+                 unique: bool = False, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if cost_miss <= 0:
             # Ohne Preis dreht die Ziehschleife auf einem Index ohne Treffer
@@ -214,9 +252,15 @@ class NameListOracle(Oracle):
             # Fork geladen hat (Copy-on-Write bleibt heil).
             self._index = self._index[:limit]
         self.limit = limit
+        # `unique`: jeder Knoten steht nur einmal in der Liste, m(u) = 1 auf S
+        # (s. unique_index). S selbst -- und damit die Maske -- bleibt gleich.
+        self.unique = bool(unique)
+        if self.unique:
+            self._index = unique_index(self.graph.name, source, limit)
         self._n = len(self._index)
         self._mask = jump_set_mask(self.graph, source, limit)
-        self._mult = jump_multiplicity_array(self.graph, source, limit)
+        self._mult = (self._mask.view(np.uint8) if self.unique
+                      else jump_multiplicity_array(self.graph, source, limit))
         self._list_mass = int((self._index != MISS).sum())
         if self._n == 0 or not bool((self._index != MISS).any()):
             # Passiert z.B. bei Graphen mit numerischen Knotennamen
@@ -248,6 +292,26 @@ class NameListOracle(Oracle):
             if not len(nbrs):
                 break       # Sackgasse: hier endet der Burn-in, der Knoten zaehlt
             u = int(nbrs[self.rng.randrange(len(nbrs))])
+        return u
+
+    def list_length(self) -> int:
+        """Zahl der Listenpositionen, Nieten eingeschlossen."""
+        return self._n
+
+    def list_entry(self, i: int):
+        """Position i abfragen: Knoten bei Treffer, None bei Niete.
+
+        Anders als random_node() wird bei einer Niete *nicht* weitergezogen --
+        fuer durwunion-*, das nach einer Niete die ganze Ziehung ueber Liste
+        *und* Historie wiederholt (sampling.durw). Kosten wie dort.
+        """
+        u = int(self._index[i])
+        if u == MISS:
+            self._charge(None, self.cost_miss)
+            self.n_draw_miss += 1
+            return None
+        self._charge(u, self.cost_random_node)
+        self.n_random_node += 1
         return u
 
     def neighbors(self, u) -> tuple:

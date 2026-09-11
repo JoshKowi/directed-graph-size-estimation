@@ -479,6 +479,70 @@ bei vier Läufen aber noch kein Beleg. Die naive Variante trifft auf Slashdot,
 vermutlich weil `w = 1` gegen einen mittleren Grad von ~12 kaum ins Gewicht
 fällt; ob das auf den GPT-Graphen mit ihren vielen Sackgassen hält, ist offen.
 
+#### `durwunion-*`: Sprung gleichverteilt auf S ∪ H
+
+Die kleinste Abweichung vom Original. Die Liste S enthält **jeden Knoten nur
+einmal** und wird während des Laufs um jeden besuchten Knoten ergänzt, der
+nicht darin steht. Ein Sprung zieht eine Position dieser erweiterten Liste
+gleichverteilt; bei einer Niete wird die **ganze** Ziehung wiederholt, über
+Liste *und* Historie. Der Sprung landet damit exakt gleichverteilt auf S ∪ H,
+und alles andere bleibt wörtlich das Original:
+
+| | |
+|---|---|
+| Absprung aus u | `w / (w + deg_Gu(u))` |
+| Landung | gleichverteilt auf S ∪ H |
+| Gewicht | `1 / (w + deg_Gu(u))` (`DurwWeighting`, unverändert) |
+
+σ hat zu jedem Knoten in S ∪ H eine Kante w, jeder besuchte Knoten liegt in H,
+also hat jedes Sample c = 1. Gegenüber `durwhist`: kein β, ein Knoten in S ∩ H
+zählt nur einmal, und die Trefferzahl der Liste muss niemand kennen (die Nieten
+werden mitgezogen). **Abweichung vom Original**: σ ist mit S ∪ H statt mit V
+verbunden. Mit S = V ist es das Original — `durwunion-rand100` läuft
+nachgeprüft **dieselbe Trajektorie** wie `durw-rand100` (10/10 Läufe).
+
+- **Liste ohne Duplikate** (`oracles.name_list.unique_index`): je Knoten die
+  erste Position, Reihenfolge erhalten, Nieten bleiben. Der Index gleicht
+  normalisierte Namen ab (NFC + casefold), dedupliziert wird also nach
+  normalisiertem Namen — das kann ein Crawler auch. Selbst die eigene
+  In-Grad-Liste von gpt4o_io hat dadurch Vielfachheiten bis 6.
+- **Zielmenge:** Nie besucht wird, was weder in S liegt noch von dort erreichbar
+  ist; die Schätzung läuft gegen |R|, nicht |V|. Gemessen (gerichtet, BFS von
+  S): Slashdot 100 % für jedes P, gpt4o_io 96–99 %, gpt4_io 99,5–99,8 %.
+- Nur für `b0`; Einträge für jede Listenquelle × Länge und für `rand<P>`.
+
+Befunde:
+
+- **Exakt in der Momentaufnahme:** π ~ deg_Gu + w·1[S ∪ H], Abweichung 3·10⁻¹⁵
+  (Eigenvektor auf festem Graphen).
+- **Synthetischer gerichteter Graph** (3000 Knoten, 57 % Senken, |S| = 20 %,
+  7 Läufe): 0,82 / 0,95 / 1,00 / 1,00 bei 0,3 / 1 / 10 / 100 × |V|; mit
+  gradverzerrter Liste 0,72 / 0,81 / 0,98 / 1,00. Bei kleinem Budget vor
+  `durwhist` (0,60 bzw. 0,73 bei 0,3 × |V|), asymptotisch gleich.
+- **Slashdot0811** (10 Läufe, gerichtet, Median bei 5 % / 20 % / 100 % / 200 %):
+
+  | | |
+  |---|---|
+  | `durwunion-rand1` | 0,68 / 0,74 / 0,86 / 0,95 |
+  | `durwunion-rand10` | 0,91 / 0,86 / 0,87 / 0,95 |
+  | `durwunion-rand50` | 1,03 / 1,01 / 0,95 / 0,96 |
+  | `durwunion-rand100` | 1,04 / 1,03 / 1,01 / 1,00 |
+  | `durwhist-rand10` | 0,85 / 0,82 / 0,86 / 0,94 |
+  | `durw-rand10` (naiv) | 1,01 / 1,02 / 1,01 / 1,01 |
+
+  Die Unterschätzung ist **Anlaufphase**: bei 5 × |V| liefert die ganze
+  Trajektorie 0,98, ihre zweite Hälfte allein 0,998–1,000 (je 3 Läufe, P = 1
+  und 10). 95 % der Knoten sind nach 15–20 % der Trajektorie besucht; die
+  frühen Samples stammen aus einer Kette, deren σ nur an einem Teil von V
+  hängt. Ein anderer Seed (anderes S) ändert daran nichts (0,86 / 0,87).
+  Die naive Variante trifft auf Slashdot trotzdem besser — sie ist nicht
+  reversibel, ihr Fehler hier aber klein.
+- **GPT-Graphen** (gerichtet, 3 Läufe, bis 5 % Budget — nur Rauchtest):
+  auf gpt4o_io fällt `durwunion-rand10` von 1,21 auf 1,02, `-rand50` von 1,12
+  auf 1,01; die Listenvarianten steigen dagegen (top-q 0,33 → 1,13, indeg
+  0,55 → 1,62), dasselbe Muster wie bei `durwhist`. Auf gpt4_io liegt alles
+  weit unter 1, auch das Original (0,39 bei 5 %).
+
 ### 3c. NMMC -- Umverteilung statt Sprung
 
 DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also

@@ -302,6 +302,16 @@ for _src in sorted(namelists.SOURCES):
                             margin=config.SAFETY_MARGIN,
                             formula="wis-col-katzir",
                             history_jumps=True), _cat)
+                # Sprung gleichverteilt auf S u H, jeder Knoten nur einmal in
+                # der Liste -- Absprungregel und Gewicht des Originals. Die
+                # kleinste Abweichung vom Paper: sigma ist mit S u H statt mit
+                # V verbunden (sampling.durw, `union_jumps`).
+                REGISTRY[f"durwunion-{_src}{_tag}__b0__margin"] = Entry(
+                    partial(durw.build, jump=_src, thinning="none",
+                            draw_burn_in=0, draw_limit=_n,
+                            margin=config.SAFETY_MARGIN,
+                            formula="wis-col-katzir",
+                            union_jumps=True), _cat)
                 REGISTRY[f"durwset-{_src}{_tag}__b0__margin"] = Entry(
                     partial(durw.build, jump=_src, thinning="none",
                             draw_burn_in=0, draw_limit=_n,
@@ -318,7 +328,9 @@ del _src, _cat, _b, _n, _tag
 #   durw-rand<P>__b0__margin       naive Gewichtung 1/(w + deg_Gu)
 #   durwset-rand<P>__b0__margin    Sprung von ueberall, Landung nur auf S
 #                                  (widerlegt, s. oben -- zum Vergleich)
-#   durwhist-rand<P>__b0__margin   Sprung auf S u H, reversibel
+#   durwhist-rand<P>__b0__margin   Sprung auf S u H, reversibel, S n H doppelt
+#   durwunion-rand<P>__b0__margin  Sprung gleichverteilt auf S u H, Gewicht
+#                                  des Originals; bei P = 100 das Original
 #
 # Damit laufen die Varianten auf jedem Graphen, auch ohne Namensliste, und die
 # Frage "was kostet es, dass der Sprung nur einen Teil von V erreicht?" laesst
@@ -330,7 +342,8 @@ del _src, _cat, _b, _n, _tag
 # Kategorie Vergleich: S aus V zu ziehen setzt voraus, V zu kennen.
 # Beliebige Anteile ("durwhist-rand2.5__b0__margin") loest build() auf.
 _RAND_VARIANTS = {"durw": {}, "durwset": {"jump_set_weighting": True},
-                  "durwhist": {"history_jumps": True}}
+                  "durwhist": {"history_jumps": True},
+                  "durwunion": {"union_jumps": True}}
 
 
 def _rand_entry(variant: str, percent: float) -> Entry:
@@ -517,7 +530,7 @@ def build(name: str) -> Estimator:
             f"{', '.join(sorted(REGISTRY))} (dazu '...__margin<N>' fuer einen "
             "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
             "fuer eine abweichende Thinning-Schrittweite, "
-            "'<durw|durwset|durwhist>-rand<P>__b0__margin' fuer einen Sprung auf "
+            "'<durw|durwset|durwhist|durwunion>-rand<P>__b0__margin' fuer einen Sprung auf "
             "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100)."
         )
     # partial-Keywords werden von Aufruf-Keywords ueberschrieben

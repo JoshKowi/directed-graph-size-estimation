@@ -97,8 +97,26 @@ def build(
     jump_set_weighting: bool = False,
     history_jumps: bool = False,
     history_weight: float = 1.0,
+    union_jumps: bool = False,
     aggregate=np.median,
 ) -> PipelineEstimator:
+    # `union_jumps`: Sprung gleichverteilt auf S u H, Absprungregel und Gewicht
+    # des Originals (sampling.durw). Die Liste muss dafuer jeden Knoten nur
+    # einmal enthalten -- das Oracle bekommt deshalb unique=True.
+    if union_jumps:
+        if history_jumps or jump_set_weighting:
+            raise ValueError("union_jumps schliesst history_jumps und "
+                             "jump_set_weighting aus -- es bringt die "
+                             "Gewichtung des Originals mit.")
+        if jump == "uniform":
+            raise ValueError(
+                "union_jumps mit jump='uniform' ist das Original -- S = V, "
+                "die Historie fuegt nichts hinzu. Ein eigener Eintrag waere "
+                "ein Duplikat von wis-durw__uniform__margin.")
+        if draw_burn_in:
+            raise ValueError(
+                f"union_jumps braucht draw_burn_in = 0, ist {draw_burn_in}: "
+                "mit Burn-in laege das Sprungziel nicht mehr in S u H.")
     # `history_jumps`: Sprung auf S u H, mit passender Sprungregel *und*
     # Gewichtung -- die korrekte Fassung dessen, was jump_set_weighting
     # versucht hat. Siehe weighting.DurwSigmaWeighting.
@@ -146,7 +164,10 @@ def build(
                              "draw_limit -- der Anteil steckt im Namen.")
     elif jump != "uniform":
         oracle_cls = partial(oracle_cls, burn_in=draw_burn_in,
-                             cost_miss=cost_miss, limit=draw_limit)
+                             cost_miss=cost_miss, limit=draw_limit,
+                             # nur wenn gesetzt: sonst aendert sich der
+                             # Walk-Schluessel der vorhandenen Estimators
+                             **({"unique": True} if union_jumps else {}))
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     if not FORMULAS[formula].weighted:
@@ -167,13 +188,15 @@ def build(
              + (f"__n{draw_limit}" if draw_limit else "")
              + ("__inS" if jump_set_weighting else "")
              + (f"__hist{history_weight:g}" if history_jumps else "")
+             + ("__union" if union_jumps else "")
              + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=oracle_cls,
         sampler=DurwSampler(jump=jump_strategy(jump), jump_weight=jump_weight,
                             n_seeds=n_seeds, burn_in=burn_in,
                             history_jumps=history_jumps,
-                            history_weight=history_weight),
+                            history_weight=history_weight,
+                            union_jumps=union_jumps),
         weighting=weighting,
         formula=FORMULAS[formula](margin=margin),
         thinning=thin,
