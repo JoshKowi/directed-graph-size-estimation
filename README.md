@@ -438,6 +438,47 @@ steigt bis 20 % weiter auf 1,6–1,9. Die Kette ist reversibel *je Momentaufnahm
 aber H und G_u wachsen, sie ist also zeitinhomogen. Ob das allein die Ursache
 ist, ist nicht geklärt.
 
+#### Zufallsteilmenge statt Liste: `*-rand<P>`
+
+Dieselben drei Varianten gibt es mit einem Sprung auf eine **gleichverteilt
+gezogene Teilmenge S mit P % der Knoten** (`Code/oracles/random_subset.py`):
+`durw-rand<P>__b0__margin` (naiv), `durwset-rand<P>__b0__margin`,
+`durwhist-rand<P>__b0__margin`. Sie laufen auf jedem Graphen, auch auf
+Slashdot0811 und wiki-topcats, für die es keine Namensliste gibt, und trennen
+zwei Effekte, die bei einer echten Liste zusammenfallen: *der Sprung erreicht
+nur einen Teil von V* und *dieser Teil ist gradverzerrt*.
+
+- **S steht je Seed fest**: gezogen aus `--seed` und dem Graphennamen, also für
+  alle Läufe eines Experiments dasselbe S, bei neuem Seed ein neues. Die View
+  geht nicht ein (directed und undirected teilen S), und die Anteile sind
+  geschachtelt: S(10 %) ⊂ S(50 %).
+- Ein Sprung trifft immer (keine Nieten) und kostet `COST_RANDOM_NODE`; die
+  Einstiege kommen aus S. Kategorie **Vergleich** — S aus V zu ziehen setzt
+  V voraus.
+- Registriert für `config.JUMP_SUBSET_PERCENTS` = 1, 5, 10, 25, 50, 100;
+  jeder andere Anteil wird zur Laufzeit aufgelöst (`durwhist-rand2.5__b0__margin`).
+- **Gegenprobe P = 100**: S = V, `durwset-rand100` ist dann das Original
+  (dieselben Gewichte wie `durw-rand100`, nachgeprüft: identische Schätzungen
+  auf geteiltem Walk; nur der Einstieg kommt aus V statt aus `SEED_NODES`).
+
+Erster kleiner Lauf (Slashdot0811, gerichtet, **nur 4 Läufe**, Median n̂/|V|
+bei 5 % / 20 % / 100 % Budget):
+
+| | P = 10 | P = 100 |
+|---|---|---|
+| `durw-rand<P>` (naiv) | 1,01 / 1,02 / 1,01 | 1,00 / 1,04 / 1,00 |
+| `durwset-rand<P>` | 1,26 / 1,27 / 1,26 | 1,00 / 1,04 / 1,00 |
+| `durwhist-rand<P>` | 0,84 / 0,82 / 0,86 | 1,04 / 1,00 / 0,94 |
+
+`durwset` liegt auch bei zufälligem S rund ein Viertel daneben — der Fehler
+kommt also aus der Kette, nicht aus der Gradverzerrung der Listen.
+`durwhist` unterschätzt bei P = 10 über alle Budgets gleichbleibend; bei
+P = 100, wo es gegenüber dem Original nichts zu reparieren gibt, liegt es
+ungerichtet bei 0,93 — passend zur Zeitinhomogenität durch das wachsende H,
+bei vier Läufen aber noch kein Beleg. Die naive Variante trifft auf Slashdot,
+vermutlich weil `w = 1` gegen einen mittleren Grad von ~12 kaum ins Gewicht
+fällt; ob das auf den GPT-Graphen mit ihren vielen Sackgassen hält, ist offen.
+
 ### 3c. NMMC -- Umverteilung statt Sprung
 
 DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also

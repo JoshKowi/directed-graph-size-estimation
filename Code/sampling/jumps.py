@@ -24,8 +24,10 @@ Abfragen, die eine Strategie stellt, laufen ueber das Oracle und kosten Budget.
 Schnittstelle:
     class JumpStrategy
         .name, .next_node(oracle) -> node
-    UniformJump, NameListJump
+    UniformJump, NameListJump, RandomSubsetJump
     JUMPS: dict[str, Callable[[], JumpStrategy]]
+    subset_percent(name) -> float | None     -- "rand10" -> 10.0
+    jump_strategy(name) -> JumpStrategy       -- JUMPS plus rand<P>
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import partial
+
+import re
 
 import namelists
 
@@ -85,6 +89,23 @@ class NameListJump(JumpStrategy):
         return oracle.random_node()
 
 
+class RandomSubsetJump(JumpStrategy):
+    """Sprung auf eine feste Zufallsteilmenge S mit P % der Knoten.
+
+    Wie NameListJump nur ein Name -- gezogen wird in
+    oracles.random_subset.RandomSubsetOracle. Gedacht als Stellvertreter einer
+    Namensliste auf Graphen, fuer die es keine gibt, und als Gegenprobe ohne
+    Gradverzerrung: S ist gleichverteilt, nur ihre Groesse ist eingestellt.
+    """
+
+    def __init__(self, percent: float) -> None:
+        self.percent = float(percent)
+        self.name = f"rand{self.percent:g}"
+
+    def next_node(self, oracle):
+        return oracle.random_node()
+
+
 # Die Sprungarten. Die Listenquellen kommen aus namelists.SOURCES, damit eine
 # neue Liste nur dort eingetragen werden muss.
 JUMPS: dict[str, Callable[[], JumpStrategy]] = {
@@ -93,3 +114,21 @@ JUMPS: dict[str, Callable[[], JumpStrategy]] = {
 for _src in sorted(namelists.SOURCES):
     JUMPS[_src] = partial(NameListJump, source=_src)
 del _src
+
+
+# Zufallsteilmengen stehen nicht in JUMPS: der Anteil ist frei waehlbar
+# ("rand10", "rand0.5"), die Namen werden deshalb hier aufgeloest.
+_RAND_RE = re.compile(r"^rand(?P<p>\d+(?:\.\d+)?)$")
+
+
+def subset_percent(name: str) -> float | None:
+    """Anteil P aus "rand<P>", sonst None."""
+    m = _RAND_RE.match(name)
+    return float(m.group("p")) if m else None
+
+
+def jump_strategy(name: str) -> JumpStrategy:
+    p = subset_percent(name)
+    if p is not None:
+        return RandomSubsetJump(p)
+    return JUMPS[name]()

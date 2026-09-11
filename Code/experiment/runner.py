@@ -80,6 +80,7 @@ from estimators import pipeline
 from estimators.base import Estimator
 from graphs.graph import Graph
 from graphs.views import build_view
+from oracles import random_subset
 
 
 def _n(x) -> str:
@@ -222,6 +223,9 @@ def run_graph(
         # Aus demselben Grund, was die Oracles sonst noch am Graphen brauchen:
         # InDegreeCrawlOracle baut hier seinen Eingangsgrad-Vektor, statt in
         # jedem Kindprozess und in jedem Task erneut (siehe oracles.base.prepare).
+        # Der Sprung auf eine Zufallsteilmenge zieht S aus dem Seed des
+        # Experiments -- fest fuer alle Laeufe, neu je Seed (oracles.random_subset).
+        random_subset.set_experiment_seed(seed)
         for _cls in {getattr(e, "oracle_cls", None) for e in estimators}:
             if _cls is not None:
                 (_cls.func if isinstance(_cls, partial) else _cls).prepare(view)

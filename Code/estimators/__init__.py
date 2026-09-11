@@ -310,6 +310,40 @@ for _src in sorted(namelists.SOURCES):
                             jump_set_weighting=True), _cat)
 del _src, _cat, _b, _n, _tag
 
+# -- Sprung auf eine Zufallsteilmenge -------------------------------------
+# Dieselben drei Sprungvarianten wie bei den Namenslisten, nur trifft der
+# Sprung eine gleichverteilt gezogene Teilmenge S mit P % der Knoten
+# (oracles.random_subset) statt der Treffer einer Liste:
+#
+#   durw-rand<P>__b0__margin       naive Gewichtung 1/(w + deg_Gu)
+#   durwset-rand<P>__b0__margin    Sprung von ueberall, Landung nur auf S
+#                                  (widerlegt, s. oben -- zum Vergleich)
+#   durwhist-rand<P>__b0__margin   Sprung auf S u H, reversibel
+#
+# Damit laufen die Varianten auf jedem Graphen, auch ohne Namensliste, und die
+# Frage "was kostet es, dass der Sprung nur einen Teil von V erreicht?" laesst
+# sich getrennt von der Gradverzerrung einer echten Liste stellen. S steht je
+# Seed fest (alle Laeufe eines Experiments teilen es), ein neuer Seed zieht ein
+# neues. "b0" steht nur der Einheitlichkeit halber im Namen -- einen Burn-in
+# nach dem Sprung gibt es hier nicht.
+#
+# Kategorie Vergleich: S aus V zu ziehen setzt voraus, V zu kennen.
+# Beliebige Anteile ("durwhist-rand2.5__b0__margin") loest build() auf.
+_RAND_VARIANTS = {"durw": {}, "durwset": {"jump_set_weighting": True},
+                  "durwhist": {"history_jumps": True}}
+
+
+def _rand_entry(variant: str, percent: float) -> Entry:
+    return Entry(partial(durw.build, jump=f"rand{percent:g}", thinning="none",
+                         margin=config.SAFETY_MARGIN, formula="wis-col-katzir",
+                         **_RAND_VARIANTS[variant]), Category.COMPARISON)
+
+
+for _p in config.JUMP_SUBSET_PERCENTS:
+    for _v in _RAND_VARIANTS:
+        REGISTRY[f"{_v}-rand{_p:g}__b0__margin"] = _rand_entry(_v, _p)
+del _p, _v
+
 # w-Sweep auf den In-Grad-Kreuzlisten -- das Gegenstueck zu
 # wis-durw__uniform__w<W>__margin, nur mit simuliertem statt gleichverteiltem
 # Sprung. Bewusst schmal: nur die aus Phase 1 gewaehlte Laenge n = 100000 und
@@ -456,19 +490,35 @@ _NUMBERED_RE = re.compile(r"^(?P<base>.+__(?P<kind>" + "|".join(_NUMBERED)
                           + r"))(?P<n>\d+)$")
 
 
+# "<variante>-rand<P>__b0__margin" mit beliebigem Anteil P (s. oben)
+_RAND_RE = re.compile(r"^(?P<v>" + "|".join(_RAND_VARIANTS)
+                      + r")-rand(?P<p>\d+(?:\.\d+)?)__b0__margin$")
+
+
+def _lookup(name: str):
+    entry = REGISTRY.get(name)
+    if entry is None:
+        m = _RAND_RE.match(name)
+        if m and 0 < float(m.group("p")) <= 100:
+            entry = _rand_entry(m.group("v"), float(m.group("p")))
+    return entry
+
+
 def build(name: str) -> Estimator:
-    entry, kwargs = REGISTRY.get(name), {}
+    entry, kwargs = _lookup(name), {}
     if entry is None:
         m = _NUMBERED_RE.match(name)
         if m:
-            entry = REGISTRY.get(m.group("base"))
+            entry = _lookup(m.group("base"))
             kwargs = {_NUMBERED[m.group("kind")]: int(m.group("n"))}
     if entry is None:
         raise KeyError(
             f"{name!r} ist kein bekannter Estimator. Bekannt sind: "
             f"{', '.join(sorted(REGISTRY))} (dazu '...__margin<N>' fuer einen "
             "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
-            "fuer eine abweichende Thinning-Schrittweite)."
+            "fuer eine abweichende Thinning-Schrittweite, "
+            "'<durw|durwset|durwhist>-rand<P>__b0__margin' fuer einen Sprung auf "
+            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100)."
         )
     # partial-Keywords werden von Aufruf-Keywords ueberschrieben
     est = entry.factory(**kwargs)

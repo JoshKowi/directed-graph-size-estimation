@@ -9,7 +9,8 @@ was fuer den einfachen Random Walk gerade nicht gilt.
 
 Die austauschbaren Achsen:
 
-    jump        -- "uniform" (sampling.jumps); an die Stelle von `dead_end`
+    jump        -- "uniform", eine Listenquelle (namelists.SOURCES) oder
+                   "rand<P>" (sampling.jumps); an die Stelle von `dead_end`
                    getreten. DURW braucht keine Sackgassen-Strategie, weil eine
                    Sackgasse nie absorbierend wird: ueber eine Kante erreicht,
                    traegt sie diese Kante als Rueckweg in ihrem G_u-Grad; per
@@ -33,6 +34,7 @@ aber wie im Repo ueblich erst in estimators/__init__.py vergeben.
 
 Schnittstelle:
     JUMP_ORACLES: dict[str, type]
+    jump_oracle(jump) -> type | partial     -- JUMP_ORACLES plus rand<P>
     build(jump, thinning, step, margin, formula, jump_weight, ...)
         -> PipelineEstimator
 """
@@ -49,8 +51,9 @@ from estimators.formulas import FORMULAS
 from estimators.pipeline import PipelineEstimator
 from oracles.local_access import JumpCrawlOracle
 from oracles.name_list import NameListOracle
+from oracles.random_subset import RandomSubsetOracle
 from sampling.durw import DurwSampler
-from sampling.jumps import JUMPS
+from sampling.jumps import jump_strategy, subset_percent
 from sampling.thinning import THINNINGS
 from weighting.schemes import (DurwJumpSetWeighting, DurwSigmaWeighting,
                                DurwWeighting, UniformWeighting)
@@ -67,6 +70,16 @@ JUMP_ORACLES: dict[str, object] = {
 for _src in sorted(namelists.SOURCES):
     JUMP_ORACLES[_src] = partial(NameListOracle, source=_src)
 del _src
+
+
+def jump_oracle(jump: str):
+    """Oracle zur Sprungart. "rand<P>" -- Sprung auf eine feste Zufalls-
+    teilmenge mit P % der Knoten (oracles.random_subset) -- steht nicht in
+    JUMP_ORACLES, weil P frei waehlbar ist."""
+    p = subset_percent(jump)
+    if p is not None:
+        return partial(RandomSubsetOracle, percent=p)
+    return JUMP_ORACLES[jump]
 
 
 def build(
@@ -124,8 +137,14 @@ def build(
     # `burn_in` verwirft die ersten Schritte des Walks, `draw_burn_in` die
     # ersten Schritte *nach jedem Sprung* -- zwei verschiedene Dinge, die nicht
     # verwechselt werden duerfen. Letzteres kennt nur das NameListOracle.
-    oracle_cls = JUMP_ORACLES[jump]
-    if jump != "uniform":
+    oracle_cls = jump_oracle(jump)
+    if subset_percent(jump) is not None:
+        # Die Zufallsteilmenge hat weder Nieten noch eine Listenlaenge, und ein
+        # Burn-in nach dem Sprung ist dort nicht vorgesehen.
+        if draw_burn_in or draw_limit:
+            raise ValueError(f"jump={jump!r} kennt weder draw_burn_in noch "
+                             "draw_limit -- der Anteil steckt im Namen.")
+    elif jump != "uniform":
         oracle_cls = partial(oracle_cls, burn_in=draw_burn_in,
                              cost_miss=cost_miss, limit=draw_limit)
     thin_cls = THINNINGS[thinning]
@@ -151,7 +170,7 @@ def build(
              + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
              + (f"__m{margin}" if margin else ""),
         oracle_cls=oracle_cls,
-        sampler=DurwSampler(jump=JUMPS[jump](), jump_weight=jump_weight,
+        sampler=DurwSampler(jump=jump_strategy(jump), jump_weight=jump_weight,
                             n_seeds=n_seeds, burn_in=burn_in,
                             history_jumps=history_jumps,
                             history_weight=history_weight),

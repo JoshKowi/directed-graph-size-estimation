@@ -360,6 +360,12 @@ DRAW_BURN_INS = (0, 1, 2, 5, 10)
 # braucht je (Graph, Quelle) *einen* Index, nicht einen je Laenge.
 DRAW_LIMITS = (1_000, 10_000, 100_000, 1_000_000)
 
+# Anteile |S|/|V| in Prozent, fuer die der Sprung auf eine Zufallsteilmenge
+# eigene Registry-Eintraege bekommt (durw-/durwset-/durwhist-rand<P>__b0__margin,
+# oracles.random_subset). Andere Anteile loest estimators.build() zur Laufzeit
+# auf. 100 ist die Gegenprobe: S = V, also der gleichverteilte Sprung des Papers.
+JUMP_SUBSET_PERCENTS = (1, 5, 10, 25, 50, 100)
+
 # Ein Cache-Treffer ist billig, aber nicht gratis: ein realer Crawler haelt die
 # einmal geholte Nachbarschaft, muss sie aber weiterhin nachschlagen. Der Preis
 # ist der einzige Regler fuer ein sonst unloesbares Problem: bei Preis 0 laeuft
