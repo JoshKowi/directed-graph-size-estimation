@@ -200,3 +200,67 @@ class DurwJumpSetWeighting(WeightingScheme):
                 "nicht (s. Docstring)."
             )
         return 1.0 / denom
+
+
+class DurwSigmaWeighting(WeightingScheme):
+    """Fuer DURW mit Sprung auf S u H (sampling.durw, history_jumps=True).
+
+    **Abweichung vom Original.** Bei Ribeiro & Towsley ist der virtuelle Knoten
+    sigma mit ganz V verbunden, jeder Knoten mit Gewicht w. Hier ist sigma mit
+    der Vereinigung aus Sprungliste S und Historie H verbunden, mit Gewicht
+    w * c(u), c(u) = m(u) + beta * 1[u in H]:
+
+        m(u)   wie oft u in der Liste steht (Vielfachheit, 0 ausserhalb S)
+        beta   Gewicht der Historie (history_weight)
+
+    Die Kette bleibt damit ein Random Walk auf einem *ungerichteten*
+    gewichteten Graphen -- jeder Knoten, auf dem sigma landen kann, kann auch
+    springen, und umgekehrt. Nur dann ist sie reversibel, und nur dann gilt
+
+        pi(u) ~ deg_Gu(u) + w * c(u).
+
+    Diese Klasse ist deren Kehrwert: w_i = 1 / (deg_Gu + w * sigma_weight),
+    mit sigma_weight = c(u), vom Sampler beim Erstbesuch eingefroren wie deg_Gu.
+
+    Warum nicht DurwJumpSetWeighting (durwset-*): dort springt *jeder* Knoten,
+    sigma landet aber nur auf S. Ein Knoten ausserhalb S hat damit eine Kante
+    zu sigma, aber keine von sigma -- eine Einbahnstrasse. Die Kette ist nicht
+    reversibel und hat *keine* geschlossene Stationaerverteilung; exakt
+    nachgerechnet (Eigenvektor, 300 Knoten) weicht pi um 29 % von
+    deg_Gu + w*1[S] ab. durwset-* verschiebt die Schaetzung deshalb nur um
+    einen Faktor, statt sie zu korrigieren.
+
+    Warum nicht "nur S springt": dann kann der Walk ausserhalb von S nicht
+    heraus und haengt lange in Regionen fest, die er nur zu Fuss wieder
+    verlaesst. Mit H kann jeder besuchte Knoten springen.
+
+    Die Vielfachheit m(u) gehoert in Sprungregel *und* Gewicht -- bei top-q
+    steht ein Knoten bis zu 40-mal in der Liste. Ohne sie weicht pi im Test um
+    5 % ab. Fehlschlaege beim Ziehen beruehren weder das eine noch das andere:
+    neu ziehen bis zum Treffer liefert exakt m(u)/sum(m).
+
+    Mit S = V und m = 1 sowie beta -> 0 faellt das aufs Original zurueck.
+    """
+
+    needs_degree = True
+
+    def __init__(self, jump_weight: float = config.DURW_JUMP_WEIGHT) -> None:
+        self.jump_weight = float(jump_weight)
+        if self.jump_weight <= 0:
+            raise ValueError(f"jump_weight muss > 0 sein, ist {self.jump_weight}")
+        self.name = f"inv_deg_plus_w{self.jump_weight:g}_sigma"
+
+    def weights(self, samples: Sequence[Sample]) -> np.ndarray:
+        if any(s.degree is None for s in samples):
+            raise ValueError(
+                "DurwSigmaWeighting braucht Sample.degree (den Grad in G_u).")
+        deg = np.array([s.degree for s in samples], dtype=float)
+        sig = np.array([s.sigma_weight for s in samples], dtype=float)
+        denom = deg + self.jump_weight * sig
+        if not np.all(denom > 0):
+            raise ValueError(
+                f"{int((denom <= 0).sum())} Samples mit deg_Gu = 0 und "
+                "sigma_weight = 0 -- ein solcher Knoten waere unerreichbar. Mit "
+                "history_jumps ist sigma_weight >= beta > 0; laeuft der Sampler "
+                "vielleicht nicht in diesem Modus?")
+        return 1.0 / denom

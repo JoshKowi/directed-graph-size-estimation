@@ -245,6 +245,18 @@ class Oracle:
         """
         return True
 
+    def jump_multiplicity(self, u) -> int:
+        """Wie oft liefert random_node() diesen Knoten, gemessen an einer
+        einzelnen Ziehung? Default 1: gleichverteilt aus V, jeder Knoten
+        einmal. Nur oracles.name_list weicht ab -- dort kann ein Knoten ueber
+        mehrere Listeneintraege getroffen werden (bei top-q bis zu 40-mal)."""
+        return 1
+
+    def list_mass(self) -> int:
+        """Summe der Vielfachheiten, also die Zahl der Positionen, aus denen
+        random_node() zieht und die einen Knoten treffen. Default |V|."""
+        return self.graph.n_nodes
+
     def seed_nodes(self, k: int = 1) -> list:
         """Bekannte Einstiegsknoten (realistischer Startpunkt eines Crawls)."""
         raise NotImplementedError

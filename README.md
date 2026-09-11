@@ -390,6 +390,54 @@ Beide Reihen stehen nebeneinander, statt dass die alten Namen umgewidmet werden
 korrigiert ist selbst ein Ergebnis. Sie teilen sich denselben `walk_key`, mit
 `--share-walks` läuft der Vergleich also gepaart auf *einer* Trajektorie.
 
+**Nachtrag: `durwset-*` ist widerlegt.** Die Gewichtung oben war die richtige
+für eine Kette, die der Code gar nicht implementiert. Dort springt *jeder*
+Knoten mit `w/(w + deg_Gu)`, σ landet aber nur auf S — ein Knoten außerhalb
+von S hat damit eine Kante *zu* σ, aber keine *von* σ. Diese Einbahnstraße
+macht die Kette nicht reversibel, und sie hat überhaupt keine geschlossene
+Stationärverteilung. Exakt nachgerechnet (Eigenvektor, fester Graph, 300
+Knoten, |S| = 20 %) weicht π um 29 % von `deg_Gu + w·1[S]` ab. `durwset-*`
+verschiebt die Schätzung deshalb nur um einen Faktor ~1,3, statt sie zu
+korrigieren; die Einträge bleiben nur für die vorhandenen Ergebnisse stehen.
+
+#### `durwhist-*`: Sprung auf S ∪ H
+
+Reversibel wird die Kette erst, wenn σ genau zu den Knoten eine Kante hat, auf
+denen es landen kann — und genau diese dürfen springen. `durwhist-*` verbindet
+σ mit der Liste S **und** der Historie H der verschiedenen besuchten Knoten,
+mit Gewicht `w·c(u)`, `c(u) = m(u) + β·1[u ∈ H]`:
+
+| | |
+|---|---|
+| Absprung aus u | `w·c(u) / (w·c(u) + deg_Gu(u))` |
+| Landung | mit `Σm/(Σm + β|H|)` aus der Liste (∝ m), sonst gleichverteilt aus H |
+| Gewicht | `1/(deg_Gu + w·c(u))` |
+
+Da jeder besuchte Knoten in H liegt, kann jeder springen — der Walk hängt nicht
+mehr in Regionen außerhalb von S fest. `c(u)` friert beim Erstbesuch ein, genau
+wie `deg_Gu`. **Auch das ist eine Abweichung vom Original**, die Kette ist aber
+für jede Momentaufnahme exakt reversibel mit `π ~ deg_Gu + w·c`, für jedes β
+(nachgerechnet, Abweichung 10⁻¹⁵).
+
+Drei Details, die dafür nötig sind:
+
+- **H gleichverteilt über die *verschiedenen* Knoten**, nicht aus der
+  Trajektorie mit Vielfachheit wie beim `history`-Sprung des einfachen Walks.
+  Sonst änderte sich das σ-Gewicht bei jedem Wiederbesuch.
+- **Vielfachheit m(u) in Sprungregel *und* Gewicht** — bei top-q steht ein
+  Knoten bis zu 40-mal in der Liste. Ohne sie weicht π um 5 % ab.
+- **Fehlschläge ändern nichts an π**, nur an den Kosten: neu ziehen bis zum
+  Treffer liefert exakt `m(u)/Σm` (gemessen: 3 Mio Sprünge bei 60 %
+  Fehlschlagquote, Verhältnis 0,997–1,010 über alle m-Klassen).
+
+Nur für `b0`, aus demselben Grund wie oben.
+
+**Offener Befund:** die Theorie ist sauber, konvergieren tut `durwhist-*` auf
+gpt4o_io gerichtet trotzdem nicht — es kreuzt 1,0 bei rund 5 % Budget und
+steigt bis 20 % weiter auf 1,6–1,9. Die Kette ist reversibel *je Momentaufnahme*,
+aber H und G_u wachsen, sie ist also zeitinhomogen. Ob das allein die Ursache
+ist, ist nicht geklärt.
+
 ### 3c. NMMC -- Umverteilung statt Sprung
 
 DURW kauft seine bekannte Verteilung mit einem gleichverteilten Sprung, also
@@ -531,6 +579,73 @@ gibt es die Reihe `{nmmc-uni,wis-nmmc}__<indeg>__a<A>__margin` ueber
 `config.NMMC_ALPHAS` (0 / 1 / 3 / 10 -- vier Werte; zusammen mit den vier
 Eintraegen im Thinning-Slot trifft `--match nmmc-uni__online__` damit genau die
 acht Kurven, die ein Bild traegt).
+
+**Mehrere Agenten.** Das Paper faehrt in jeder Simulation 100 bis 10^4
+Agenten; ein einzelner kommt dort nicht vor. Was geteilt wird, legt es an drei
+Stellen getrennt fest -- und genau so ist es umgesetzt:
+
+| | geteilt? | Belegstelle im Paper |
+|---|---|---|
+| Historie `mu_t` / Umverteilung | **nein**, je Agent eigen | "each agent maintains its own historical empirical distribution" (Abschnitt 5) |
+| Cache | **ja** | "The local cache can also be easily shared among multiple crawling agents" (6.5) |
+| Online-Schaetzung von d- | **ja** | "All the agents share the estimate of the in-degree of each node" (6.3) |
+
+Ein Agent springt also ausschliesslich auf eigene Besuche zurueck. **Abweichend
+vom Paper teilen sich die Agenten hier das Budget**: dort laeuft jeder volle t
+Schritte, und die Kosten fallen nur ueber den Cache zusammen.
+
+Die Reihe `wis-nmmc__<indeg>__k<K>__margin` laeuft ueber `config.NMMC_AGENTS`
+(1 / 10 / 100 / 1000) fuer `exact`, `online` und `cross-online`, dazu
+`...__k<K>__sharedc__margin` fuer K > 1. Gemessen ueber die Pipeline
+(`run_experiment.py`) auf Slashdot0811 gerichtet, `exact`, Median ueber 5
+Laeufe, Schaetzung/|V|:
+
+| K | 0,1 % | 5 % | 20 % |
+|---|---|---|---|
+| 1 | 0.093 | 0.255 | 0.363 |
+| 10 | 0.017 | 0.495 | 0.518 |
+| 100 | 0.009 | 0.152 | **0.705** |
+| 1000 | 0.014 | 0.015 | 0.082 |
+| 100, `sharedc` | 0.013 | 0.010 | 0.015 |
+
+Die Streuung ist erheblich -- ueber 15 Laeufe bei 20 % reicht K = 100 von 0.677
+bis 0.874, K = 300 von 0.075 bis 0.793. Einzelne Budgets sind daher mit
+Vorsicht zu lesen.
+
+Warum es wirkt: die Annahmequote steigt mit K von 0,17 auf 0,89 (`exact`) bzw.
+von 0,03 auf 0,94 (`online`, `nmmc_trace.py`). Ein neuer Agent setzt `c_t` auf 1
+zurueck, also in die Phase, in der fast jeder Zug angenommen wird. Die Abdeckung
+steigt dabei nur um rund 15 % -- der Gewinn kommt vor allem daher, dass
+**Scheinkollisionen wegfallen**: ein festsitzender Einzelagent besucht dieselben
+paar tausend Knoten tausendfach, und genau das zaehlt der Kollisionsschaetzer
+als Treffer. Unbequeme Kehrseite: kuerzere Laeufe heissen, dass `c_t` dem
+wahren `c` noch ferner bleibt. Die Schaetzung wird besser, obwohl die
+QSD-Garantie *schlechter* erfuellt ist. `sharedc` misst genau das Gegenteil --
+`c_t` bleibt ueber die Agenten stehen, die Annahmequote bricht ein, und die
+Schaetzung faellt auf 0,015.
+
+Warum K = 1000 wieder schlechter wird: **die Agenten starten alle an denselben
+wenigen Einstiegsknoten** (`config.SEED_NODES`, bei Slashdot fuenf). Bei
+K = 1000 macht jeder Agent nur rund 42 Schritte, bevor der naechste wieder an
+einem der fuenf Seeds beginnt; 8,2 % aller Samples landen dann im
+1-Hop-Umkreis dieser fuenf Knoten (20 Knoten insgesamt), der haeufigste
+erscheint 723-mal. Das sinnvolle K ist damit nach oben durch Budget *und* Zahl
+der Einstiegsknoten begrenzt -- auf Slashdot liegt es um 100.
+
+**Untergrenze.** Ein Agent muss seinen Einstieg (`COST_RANDOM_NODE`) plus
+`config.NMMC_MIN_STEPS_PER_AGENT` = 5 volle Abfragen bezahlen koennen. Sonst
+kappt der Sampler K: bei Budget 0,1 % (77 Einheiten) laufen statt 100 oder 1000
+nur 12 Agenten. Das ist still, aber ablesbar -- **`n_random_node` in der
+Ergebnis-CSV ist genau die Zahl der tatsaechlich gelaufenen Agenten**. Wer
+`k1000` bei kleinem Budget sieht, sollte dort nachsehen.
+
+**Rechenzeit.** Mit K > 1 liest der Sampler das Budget, um die Grenzen zu
+setzen; ein Praefix ist dann nicht mehr bitgleich mit einem eigenstaendigen
+kuerzeren Lauf. `supports_nested` faellt deshalb fuer diese Eintraege
+(wie bei `capture_recapture`), `--checkpoint-budgets` nimmt sie nicht mit, und
+jedes Budget wird ein eigener Lauf. Das Runner-Log fuehrt sie unter
+"ausgenommen". `k1` bleibt nestbar und teilt sich mit `--share-walks` den Walk
+mit `wis-nmmc__<indeg>__margin`.
 
 **Was die Ergebnis-CSV hergibt und was nicht.** Bei `burn_in = 0` ist
 `extra_n_samples` die Schrittzahl, und `unique_nodes_used / extra_n_samples`

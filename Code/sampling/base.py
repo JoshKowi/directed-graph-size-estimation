@@ -49,6 +49,13 @@ class Sample:
     # kennen keinen Sprung und bleiben beim Default False. Gelesen von
     # diagnose_walk.diagnose_durw() zur Sprungrate; ansonsten ungenutzt.
     jumped: bool = False
+    # Gewicht der Kante zum virtuellen Sprungknoten sigma, in Einheiten von w.
+    # Gelesen ausschliesslich von weighting.DurwSigmaWeighting. Default 1.0 ist
+    # das Original-DURW: sigma ist mit jedem Knoten mit Gewicht w verbunden.
+    # Beim Sprung auf S u H (sampling.durw, history_jumps=True) ist es
+    # m(u) + beta -- Vielfachheit in der Liste plus Historienanteil --, beim
+    # Erstbesuch eingefroren wie deg_Gu.
+    sigma_weight: float = 1.0
 
 
 class Sampler(ABC):

@@ -107,6 +107,8 @@ class DurwSampler(Sampler):
         n_seeds: int = 1,
         n_walks: int = 1,
         burn_in: int = 0,
+        history_jumps: bool = False,
+        history_weight: float = 1.0,
     ) -> None:
         self.jump = jump or UniformJump()
         self.jump_weight = float(jump_weight)
@@ -118,12 +120,23 @@ class DurwSampler(Sampler):
         self.n_seeds = n_seeds
         self.n_walks = n_walks
         self.burn_in = burn_in
+        # Sprung auf S u H statt nur auf die Sprungmenge der Liste -- s.
+        # Modul-Docstring, Abschnitt "Sprung auf S u H".
+        self.history_jumps = bool(history_jumps)
+        self.history_weight = float(history_weight)
+        if self.history_jumps and self.history_weight <= 0:
+            raise ValueError(
+                f"history_weight muss > 0 sein, ist {self.history_weight}: bei 0 "
+                "koennten Knoten ausserhalb von S nicht mehr springen.")
         self.name = f"durw_{self.jump.name}"
 
     def key(self) -> str:
         """Alles, was den Walk steuert -- die Sprungart steckt im Namen."""
-        return (f"{self.name}|w{self.jump_weight:g}|seeds{self.n_seeds}"
+        base = (f"{self.name}|w{self.jump_weight:g}|seeds{self.n_seeds}"
                 f"|walks{self.n_walks}|burn{self.burn_in}")
+        # Nur wenn eingeschaltet -- sonst bleibt der Schluessel der alten
+        # Estimators unveraendert und ihre Walk-Gruppen stimmen weiter.
+        return base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
 
     def sample(self, oracle) -> list[Sample]:
         w = self.jump_weight
@@ -143,6 +156,12 @@ class DurwSampler(Sampler):
                 #           also E(i) eingeschraenkt auf offene Endpunkte.
                 adj: dict[int, list[int]] = {}
                 back: dict[int, list[int]] = {}
+                # Die *verschiedenen* besuchten Knoten, in Besuchsreihenfolge --
+                # nur fuer history_jumps. Gezogen wird gleichverteilt daraus,
+                # nicht aus der Trajektorie mit Vielfachheit: sonst aenderte sich
+                # das sigma-Gewicht eines Knotens bei jedem Wiederbesuch und
+                # froere nicht mehr ein.
+                visited: list[int] = []
                 u = int(oracle.seed_nodes(self.n_seeds)[0])
                 step = 0
                 jumped = False   # der Seed selbst ist kein Sprungziel
@@ -163,6 +182,8 @@ class DurwSampler(Sampler):
                         adj[u] = fresh + back.pop(u, [])
                         for v in fresh:
                             back.setdefault(v, []).append(u)
+                        if self.history_jumps:
+                            visited.append(u)
                     nbrs = adj[u]
 
                     if step >= self.burn_in:
@@ -170,18 +191,48 @@ class DurwSampler(Sampler):
                         # listenbasierten Sprungs relevant; beim
                         # gleichverteilten Sprung ist es immer True (s.
                         # oracles.base.Oracle.in_jump_set).
+                        # sigma_weight: im alten Modus 1.0 (Original-DURW), im
+                        # neuen m(u) + beta. Per Keyword, damit die Position
+                        # der anderen Felder nicht davon abhaengt.
+                        if self.history_jumps:
+                            sigma = oracle.jump_multiplicity(u) + self.history_weight
+                        else:
+                            sigma = 1.0
                         current.append(Sample(u, len(nbrs), step, walk,
-                                              oracle.in_jump_set(u), jumped))
+                                              oracle.in_jump_set(u), jumped,
+                                              sigma_weight=sigma))
                         oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
                     step += 1
 
                     # Bei deg 0 ist w/(w+0) = 1 -- der Sprung ist dann sicher,
                     # ohne dass es einen eigenen Zweig braucht.
-                    jumped = oracle.rng.random() < w / (w + len(nbrs))
-                    if jumped:
-                        u = int(self.jump.next_node(oracle))
+                    if not self.history_jumps:
+                        # Original-DURW: jeder Knoten springt mit w/(w + deg).
+                        jumped = oracle.rng.random() < w / (w + len(nbrs))
+                        if jumped:
+                            u = int(self.jump.next_node(oracle))
+                        else:
+                            u = nbrs[oracle.rng.randrange(len(nbrs))]
                     else:
-                        u = nbrs[oracle.rng.randrange(len(nbrs))]
+                        # Sprung auf S u H. u ist immer schon besucht, liegt also
+                        # in H: c(u) = m(u) + beta > 0, jeder Knoten kann springen.
+                        c = oracle.jump_multiplicity(u) + self.history_weight
+                        jumped = oracle.rng.random() < w * c / (w * c + len(nbrs))
+                        if jumped:
+                            # Landung ~ c: mit Wahrscheinlichkeit
+                            # sum(m) / (sum(m) + beta*|H|) aus der Liste, sonst
+                            # gleichverteilt aus der Historie. Die Mischung ist
+                            # exakt c(v)/sum(c) -- nachgerechnet.
+                            mass = oracle.list_mass()
+                            hist = self.history_weight * len(visited)
+                            if oracle.rng.random() < mass / (mass + hist):
+                                u = int(self.jump.next_node(oracle))
+                            else:
+                                # aus dem eigenen Gedaechtnis: kostet nichts; die
+                                # Nachbarabfrage bei Ankunft ist ein Cache-Treffer
+                                u = visited[oracle.rng.randrange(len(visited))]
+                        else:
+                            u = nbrs[oracle.rng.randrange(len(nbrs))]
                 trace.extend(current)
                 current = []
         except BudgetExceeded:

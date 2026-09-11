@@ -37,6 +37,7 @@ vorab gebaut; zur Laufzeit wird kein einziger String angefasst.
 Schnittstelle:
     load_index(graph_name, source) -> np.ndarray
     jump_set_mask(graph, source, limit) -> np.ndarray
+    jump_multiplicity_array(graph, source, limit) -> np.ndarray
     index_meta(graph_name, source) -> dict
     available(graph_name) -> list[str]
     class NameListOracle(Oracle)  -- random_node(), neighbors(), degree(),
@@ -64,6 +65,11 @@ _CACHE: dict[tuple[str, str], np.ndarray] = {}
 # Knoten statt als Menge von IDs: bei gpt4_io sind das 6,5 MB gegen ein
 # Vielfaches fuer ein Python-set, und der Test ist ein Array-Zugriff.
 _MASKS: dict[tuple[str, str, int | None], np.ndarray] = {}
+
+# Vielfachheit je Knoten und (Graph, Quelle, Laenge): wie viele Listenpositionen
+# treffen ihn. uint16 statt int64: das Maximum liegt bei 40 (top-q), und bei
+# 6,5 Mio Knoten sind das 13 MB gegen 52 MB.
+_MULTS: dict[tuple[str, str, int | None], np.ndarray] = {}
 
 
 def _path(graph_name: str, source: str):
@@ -105,6 +111,31 @@ def jump_set_mask(graph, source: str, limit: int | None = None) -> np.ndarray:
             mask[hit] = True
         _MASKS[key] = mask
     return mask
+
+
+def jump_multiplicity_array(graph, source: str,
+                            limit: int | None = None) -> np.ndarray:
+    """Vielfachheit m(u) je Knoten -- ueber die *Treffer* gezaehlt.
+
+    Fehlschlaege (-1) tragen nichts bei: sie haben keinen Knoten, und die
+    Ziehung verwirft sie ohnehin (Rejection Sampling). Die Landewahrschein-
+    lichkeit eines Sprungs ist deshalb m(u)/sum(m), unabhaengig davon, wie
+    viele Nieten die Liste enthaelt -- nachgemessen mit 3 Mio Spruengen bei
+    60 % Fehlschlagquote, Verhaeltnis 0,997 bis 1,010 ueber alle m-Klassen.
+    """
+    key = (graph.name, source, limit)
+    arr = _MULTS.get(key)
+    if arr is None:
+        idx = load_index(graph.name, source)
+        if limit is not None:
+            idx = idx[:limit]
+        hit = idx[idx != MISS]
+        counts = np.bincount(hit, minlength=graph.n_nodes)
+        if counts.size and counts.max() > np.iinfo(np.uint16).max:
+            raise ValueError(f"Vielfachheit {counts.max()} passt nicht in uint16")
+        arr = counts.astype(np.uint16)
+        _MULTS[key] = arr
+    return arr
 
 
 def index_meta(graph_name: str, source: str) -> dict:
@@ -185,6 +216,8 @@ class NameListOracle(Oracle):
         self.limit = limit
         self._n = len(self._index)
         self._mask = jump_set_mask(self.graph, source, limit)
+        self._mult = jump_multiplicity_array(self.graph, source, limit)
+        self._list_mass = int((self._index != MISS).sum())
         if self._n == 0 or not bool((self._index != MISS).any()):
             # Passiert z.B. bei Graphen mit numerischen Knotennamen
             # (Slashdot0811, wiki-topcats): dort gibt es nichts abzugleichen.
@@ -233,6 +266,14 @@ class NameListOracle(Oracle):
         weighting.DurwJumpSetWeighting.
         """
         return bool(self._mask[u])
+
+    def jump_multiplicity(self, u) -> int:
+        """Wie viele Listenpositionen treffen u? 0 ausserhalb von S."""
+        return int(self._mult[u])
+
+    def list_mass(self) -> int:
+        """Zahl der Trefferpositionen -- die Summe aller m(u)."""
+        return self._list_mass
 
     def seed_nodes(self, k: int = 1) -> list:
         """Einstiege kommen aus derselben Liste -- ein Crawler, der nur sie

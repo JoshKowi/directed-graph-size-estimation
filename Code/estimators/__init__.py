@@ -287,7 +287,21 @@ for _src in sorted(namelists.SOURCES):
             # unter durw-<quelle>__* ihre Bedeutung behalten -- der Vergleich
             # naiv gegen korrigiert ist selbst ein Ergebnis. Beide teilen sich
             # bei --share-walks eine Trajektorie, der Vergleich ist also gepaart.
+            # Sprung auf S u H -- die theoretisch saubere Fassung. **Ebenfalls
+            # eine Abweichung vom Original**: sigma ist nicht mit ganz V
+            # verbunden, sondern mit Liste und Historie. Sprungregel *und*
+            # Gewicht folgen daraus, die Kette bleibt reversibel und
+            # pi(u) ~ deg_Gu + w*(m(u) + 1). Siehe weighting.DurwSigmaWeighting.
+            # durwset-* bleibt fuer die vorhandenen Ergebnisse stehen, ist aber
+            # widerlegt: dort springt jeder Knoten, sigma landet nur auf S, und
+            # die Kette hat keine geschlossene Stationaerverteilung.
             if _b == 0:
+                REGISTRY[f"durwhist-{_src}{_tag}__b0__margin"] = Entry(
+                    partial(durw.build, jump=_src, thinning="none",
+                            draw_burn_in=0, draw_limit=_n,
+                            margin=config.SAFETY_MARGIN,
+                            formula="wis-col-katzir",
+                            history_jumps=True), _cat)
                 REGISTRY[f"durwset-{_src}{_tag}__b0__margin"] = Entry(
                     partial(durw.build, jump=_src, thinning="none",
                             draw_burn_in=0, draw_limit=_n,
@@ -389,6 +403,42 @@ for _indeg in IN_DEGREES:
 # deshalb zuerst (dict-Reihenfolge ist zugesichert).
 del _indeg, _cat, _thinning, _name, _tag, _target, _f, _a
 del _NMMC_UNI, _NMMC_WIS, _NMMC_RAW
+
+# -- NMMC: Agentenzahl ---------------------------------------------------
+# Das Paper faehrt in jeder Simulation 100 bis 10^4 Agenten; ein einzelner
+# kommt dort nicht vor. Sie teilen sich hier Budget und Cache, dazu die
+# Online-Schaetzung des Eingangsgrades -- eigen bleibt je Agent die Historie
+# (Belegstellen im Docstring von sampling.nmmc).
+#
+# Nur auf dem Ziel pi ~ d-: beim Uniform-Ziel bleibt die Schaetzung gemessen
+# bei 0,000-0,001, egal wie viele Agenten laufen. Ueber
+# methods.nmmc.build(target="uniform", n_agents=...) ist es trotzdem direkt
+# aufrufbar.
+#
+# Achtung Rechenzeit: mit K > 1 liest der Sampler das Budget, supports_nested
+# faellt also (s. methods/nmmc.py) und --checkpoint-budgets nimmt diese
+# Eintraege nicht mit -- je Budget ein eigener Lauf.
+for _indeg in ("exact", "online", "cross-online"):
+    _cat = _INDEG_CATEGORY[_indeg]
+    for _k in config.NMMC_AGENTS:
+        # k1 hat denselben walk_key wie wis-nmmc__<indeg>__margin -- mit
+        # --share-walks kostet der Doppeleintrag nichts, und die Plot-Legende
+        # liest sich einheitlich (wie beim w-Sweep von DURW).
+        REGISTRY[f"wis-nmmc__{_indeg}__k{_k}__margin"] = Entry(
+            partial(nmmc.build, target="indeg", indeg=_indeg, thinning="none",
+                    margin=config.SAFETY_MARGIN, formula="wis-col-katzir",
+                    n_agents=_k), _cat)
+        # Gegenprobe: c_t ueber alle Agenten stehen lassen statt je Agent
+        # zurueckzusetzen. Bei einem Agenten waere das identisch, deshalb erst
+        # ab k > 1.
+        if _k > 1:
+            REGISTRY[f"wis-nmmc__{_indeg}__k{_k}__sharedc__margin"] = Entry(
+                partial(nmmc.build, target="indeg", indeg=_indeg,
+                        thinning="none", margin=config.SAFETY_MARGIN,
+                        formula="wis-col-katzir", n_agents=_k, shared_c=True),
+                _cat)
+
+del _indeg, _cat, _k
 
 
 def register(name: str, factory: Callable[[], Estimator], category: Category) -> None:
