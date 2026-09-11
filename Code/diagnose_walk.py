@@ -38,6 +38,7 @@ Beispiele:
     python diagnose_walk.py --graph gpt4o_io --views directed undirected
     python diagnose_walk.py --graph Slashdot0811 --dead-end backtrack --budget 0.01
     python diagnose_walk.py --graph gpt4o_io --seed 7
+    python diagnose_walk.py --graph gpt4_io --connectivity --jump-weight 10
 """
 
 from __future__ import annotations
@@ -48,14 +49,15 @@ from collections import Counter
 
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import breadth_first_order
+from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.stats import spearmanr
 
 import config
 from graphs import loader
 from graphs.views import build_view
-from oracles.local_access import CrawlOracle
+from oracles.local_access import CrawlOracle, JumpCrawlOracle
 from sampling.dead_ends import DEAD_ENDS
+from sampling.durw import DurwSampler
 from sampling.samplers import RandomWalkSampler
 
 
@@ -209,6 +211,132 @@ def print_report(d):
               f"{r['deg_out']:>9}{r['deg_in']:>9}".replace(",", " "))
 
 
+def diagnose_connectivity(graph, top: int = 10):
+    """Fragmentierung des *gerichteten* Graphen -- unabhaengig von jedem Walk.
+
+    Zwei Zerlegungen derselben Kantenmenge:
+        SCC (stark)  -- u und v gegenseitig erreichbar. Der Walk kann eine
+                        SCC nie verlassen und wieder betreten; eine kleine
+                        SCC am Ende eines Laufs ist die strukturelle Decke
+                        hinter `reachable_end` in diagnose().
+        WCC (schwach) -- u und v verbunden, wenn man Kantenrichtung ignoriert.
+                        Obergrenze dafuer, was ein ungerichtetes G_u (DURW)
+                        ueberhaupt je verbinden koennte: mehr WCCs als 1
+                        heisst, selbst *alle* Kanten zusammen reichen nicht.
+    Beides ist O(|E|) ueber scipy, kein BFS je Seed noetig.
+    """
+    view = build_view(graph, "directed")
+    n = view.n_nodes
+    mat = csr_matrix((np.ones(view.n_edges, dtype=np.int8), view.indices, view.indptr),
+                     shape=(n, n))
+    n_scc, labels = connected_components(mat, directed=True, connection="strong")
+    n_wcc, _ = connected_components(mat, directed=True, connection="weak")
+
+    sizes = np.bincount(labels)
+    order = np.argsort(sizes)[::-1]
+    giant = int(sizes[order[0]])
+    n_singleton = int(np.sum(sizes == 1))
+
+    return {
+        "graph": graph.name, "n_nodes": n,
+        "n_scc": int(n_scc), "n_wcc": int(n_wcc),
+        "giant_scc_size": giant, "giant_scc_share": giant / n,
+        "n_singleton_scc": n_singleton, "singleton_share": n_singleton / n,
+        "scc_sizes_top": [int(s) for s in sizes[order[:top]]],
+    }
+
+
+def print_connectivity_report(d):
+    n = d["n_nodes"]
+    print(f"\n=== {d['graph']} / Zusammenhang (gerichtet) ===")
+    rows = [
+        ("|V|", n),
+        ("SCCs (stark zusammenhaengend)", d["n_scc"]),
+        ("groesste SCC", d["giant_scc_size"]),
+        ("WCCs (schwach zusammenhaengend)", d["n_wcc"]),
+        ("Knoten in Ein-Knoten-SCCs", d["n_singleton_scc"]),
+    ]
+    print(f"{'Groesse':40}{'Wert':>16}{'Anteil |V|':>13}")
+    for label, val in rows:
+        print(f"{label:40}{val:>16,.0f}{val / n:>13.5f}".replace(",", " "))
+    print(f"\ngroesste SCCs: {d['scc_sizes_top']}")
+
+
+def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_JUMP_WEIGHT,
+                  budget_rel=0.01, seed: int = config.DEFAULT_SEED, n_checkpoints=60):
+    """Sprungrate, Sackgassen-Fluchtrate und deg_Gu ueber einen echten DURW-Lauf.
+
+    Anders als diagnose(): laeuft DurwSampler statt RandomWalkSampler, weil
+    DURW nie absorbierend steckenbleibt -- "weniger verbunden" zeigt sich hier
+    nicht als Plateau, sondern als haeufigerer Zwangssprung und niedriger
+    deg_Gu bei Erstbesuch (siehe sampling.durw Docstring fuer die Zahlen, die
+    das hier reproduzierbar macht).
+    """
+    base = build_view(graph, "directed")
+    view = build_view(graph, view_name)
+    n = view.n_nodes
+    budget = max(int(round(budget_rel * n)), 2)
+    out_deg = np.diff(base.indptr)
+
+    oracle = JumpCrawlOracle(view, random.Random(f"diag-durw|{seed}|{jump_weight:g}"),
+                             budget, config.DEFAULT_BUDGET_METRIC)
+    sampler = DurwSampler(jump_weight=jump_weight)
+    trace = sampler.sample(oracle)
+    k = len(trace)
+
+    checkpoints = np.unique(np.geomspace(1, max(k, 2), n_checkpoints).astype(np.int64))
+    seen: set[int] = set()
+    jump_rate_curve, escape_curve, deg_gu_curve = [], [], []
+    n_jumped = n_dead_ends = n_dead_end_escapes = n_first_visits = 0
+    deg_gu_sum = 0.0
+    ci = 0
+    for i, s in enumerate(trace, start=1):
+        if s.jumped:
+            n_jumped += 1
+        if s.node not in seen:
+            seen.add(s.node)
+            n_first_visits += 1
+            deg_gu_sum += s.degree
+            if out_deg[s.node] == 0:
+                n_dead_ends += 1
+                if s.degree >= 1:
+                    n_dead_end_escapes += 1
+        while ci < len(checkpoints) and i >= checkpoints[ci]:
+            jump_rate_curve.append((i, n_jumped / i))
+            escape_curve.append(
+                (i, n_dead_end_escapes / n_dead_ends if n_dead_ends else float("nan")))
+            deg_gu_curve.append(
+                (i, deg_gu_sum / n_first_visits if n_first_visits else float("nan")))
+            ci += 1
+
+    return {
+        "graph": graph.name, "view": view_name, "jump_weight": jump_weight, "seed": seed,
+        "budget_rel": budget_rel, "budget_abs": budget, "steps": k,
+        "n_nodes": n, "distinct": len(seen),
+        "jump_rate": n_jumped / k if k else float("nan"),
+        "dead_ends_visited": n_dead_ends,
+        "dead_end_escape_rate": n_dead_end_escapes / n_dead_ends if n_dead_ends else float("nan"),
+        "mean_deg_gu": deg_gu_sum / n_first_visits if n_first_visits else float("nan"),
+        "jump_rate_curve": jump_rate_curve,
+        "dead_end_escape_curve": escape_curve,
+        "deg_gu_curve": deg_gu_curve,
+    }
+
+
+def print_durw_report(d):
+    n = d["n_nodes"]
+    print(f"\n=== {d['graph']} / {d['view']} / DURW w={d['jump_weight']:g} "
+          f"/ seed={d['seed']} ===")
+    print(f"Budget {d['budget_rel']:g} = {d['budget_abs']:,} Einheiten, "
+          f"{d['steps']:,} Schritte, {d['distinct']:,} verschieden besucht\n"
+          .replace(",", " "))
+    print(f"Sprungrate:                              {d['jump_rate']:>8.1%}")
+    print(f"Besuchte Sackgassen (Anteil |V|):         {d['dead_ends_visited']:>8,} "
+          f"({d['dead_ends_visited'] / n:.1%})".replace(",", " "))
+    print(f"davon mit deg_Gu >= 1 (koennen zurueck):  {d['dead_end_escape_rate']:>8.1%}")
+    print(f"mittlerer deg_Gu bei Erstbesuch:          {d['mean_deg_gu']:>8.2f}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -219,6 +347,13 @@ def main() -> None:
     p.add_argument("--top", type=int, default=15)
     p.add_argument("--seed", type=int, default=config.DEFAULT_SEED,
                    help=f"Zufallsstrom des Walks (Default: {config.DEFAULT_SEED})")
+    p.add_argument("--connectivity", action="store_true",
+                   help="zusaetzlich SCC/WCC-Zerlegung und einen echten "
+                        "DURW-Lauf (Sprungrate, Sackgassen-Fluchtrate, deg_Gu) "
+                        "diagnostizieren")
+    p.add_argument("--jump-weight", type=float, default=config.DURW_JUMP_WEIGHT,
+                   help=f"w fuer --connectivity's DURW-Lauf "
+                        f"(Default: {config.DURW_JUMP_WEIGHT:g})")
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
 
@@ -233,6 +368,19 @@ def main() -> None:
         from plotting.walk_diagnosis import plot_diagnosis
         path = plot_diagnosis(results)
         print("\n  ->", path)
+
+    if args.connectivity:
+        print_connectivity_report(diagnose_connectivity(graph))
+        durw_results = [
+            diagnose_durw(graph, view, args.jump_weight, args.budget, args.seed)
+            for view in args.views
+        ]
+        for dd in durw_results:
+            print_durw_report(dd)
+        if not args.no_plot:
+            from plotting.walk_diagnosis import plot_durw_diagnosis
+            path = plot_durw_diagnosis(durw_results)
+            print("\n  ->", path)
 
 
 if __name__ == "__main__":

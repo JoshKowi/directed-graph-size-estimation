@@ -180,3 +180,59 @@ def plot_diagnosis(results: list[dict], path: Path | None = None) -> Path:
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
     return path
+
+
+def _curve(ax, d, key, ylabel, hline=None):
+    if d[key]:
+        steps, ys = np.array(d[key]).T
+        ax.plot(steps, ys, color=BLUE, linewidth=2)
+    if hline is not None:
+        ax.axhline(hline, color=INK_MUTED, linewidth=1, linestyle=(0, (4, 3)))
+    ax.set_xscale("log")
+    apply_axes_style(ax)
+    ax.set_xlabel("steps (log)", color=INK_MUTED, fontsize=8)
+    ax.set_ylabel(ylabel, color=INK_MUTED, fontsize=8)
+
+
+def plot_durw_diagnosis(results: list[dict], path: Path | None = None) -> Path:
+    """Drei Kurven je (Graph, View): Sprungrate, Sackgassen-Fluchtrate, deg_Gu.
+
+    Ergaenzt plot_diagnosis() (die H1/H2-Kollisionsleiter) um das, was DURW
+    statt eines Plateaus zeigt, wenn eine Region schlecht verbunden ist: mehr
+    Zwangsspruenge, seltener eine Sackgasse mit deg_Gu >= 1, niedrigerer
+    deg_Gu bei Erstbesuch.
+
+    Schnittstelle:
+        plot_durw_diagnosis(results, path=None) -> Path
+    """
+    rows = len(results)
+    fig, axes = plt.subplots(rows, 3, figsize=(16, 4.4 * rows), squeeze=False)
+    fig.patch.set_facecolor(SURFACE)
+
+    for r, d in enumerate(results):
+        _curve(axes[r][0], d, "jump_rate_curve", "jump rate")
+        _curve(axes[r][1], d, "dead_end_escape_curve", "dead-end escape rate (deg_Gu >= 1)")
+        _curve(axes[r][2], d, "deg_gu_curve", "mean deg_Gu at first visit")
+        axes[r][0].set_title(
+            f"{VIEW_TITLES.get(d['view'], d['view'])} -- DURW w={d['jump_weight']:g}",
+            color=INK, fontsize=10, loc="left", pad=8)
+        for c, title in enumerate(("", "dead-end escape", "deg_Gu")):
+            if title:
+                axes[r][c].set_title(title, color=INK, fontsize=10, loc="left", pad=8)
+
+    d0 = results[0]
+    fig.suptitle(
+        f"{config.graph_label(d0['graph'])}: DURW connectivity diagnosis "
+        f"(budget={d0['budget_rel']:g}, seed={d0.get('seed', '?')})",
+        color=INK, fontsize=12, x=0.005, ha="left")
+    fig.tight_layout(rect=(0, 0, 1, 0.965))
+
+    if path is None:
+        config.PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+        from experiment.results import seed_tag
+        path = config.unique_path(
+            config.PLOTS_DIR
+            / f"{d0['graph']}__{seed_tag(d0.get('seed'))}durw_diagnosis.png")
+    fig.savefig(path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+    return path

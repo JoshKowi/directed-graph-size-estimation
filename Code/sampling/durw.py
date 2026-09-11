@@ -145,6 +145,7 @@ class DurwSampler(Sampler):
                 back: dict[int, list[int]] = {}
                 u = int(oracle.seed_nodes(self.n_seeds)[0])
                 step = 0
+                jumped = False   # der Seed selbst ist kein Sprungziel
                 while oracle.queries < limit:
                     # Auch beim Wiederbesuch gefragt: der Cache-Treffer kostet
                     # (oracles.base), sonst liefe ein Walk in bekanntem Gebiet
@@ -170,13 +171,14 @@ class DurwSampler(Sampler):
                         # gleichverteilten Sprung ist es immer True (s.
                         # oracles.base.Oracle.in_jump_set).
                         current.append(Sample(u, len(nbrs), step, walk,
-                                              oracle.in_jump_set(u)))
+                                              oracle.in_jump_set(u), jumped))
                         oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
                     step += 1
 
                     # Bei deg 0 ist w/(w+0) = 1 -- der Sprung ist dann sicher,
                     # ohne dass es einen eigenen Zweig braucht.
-                    if oracle.rng.random() < w / (w + len(nbrs)):
+                    jumped = oracle.rng.random() < w / (w + len(nbrs))
+                    if jumped:
                         u = int(self.jump.next_node(oracle))
                     else:
                         u = nbrs[oracle.rng.randrange(len(nbrs))]

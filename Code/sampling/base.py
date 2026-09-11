@@ -44,6 +44,11 @@ class Sample:
     # erreichbare Teilmenge S vom Rest, weil beide verschiedene
     # Stationaerwahrscheinlichkeiten haben.
     in_jump_set: bool = True
+    # Wurde dieser Knoten per Zufallssprung erreicht (statt durch einen
+    # normalen Schritt)? Nur DurwSampler setzt das -- alle anderen Sampler
+    # kennen keinen Sprung und bleiben beim Default False. Gelesen von
+    # diagnose_walk.diagnose_durw() zur Sprungrate; ansonsten ungenutzt.
+    jumped: bool = False
 
 
 class Sampler(ABC):
