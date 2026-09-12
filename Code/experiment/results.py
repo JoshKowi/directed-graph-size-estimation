@@ -358,8 +358,16 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
     # Je Lauf gerechnet und dann der Median, nicht Median durch Median: das
     # waere bei ungleich langen Laeufen nicht dasselbe.
     steps = pd.to_numeric(df.get("extra_n_samples"), errors="coerce")
-    df = df.assign(jump_rate=pd.to_numeric(df["n_random_node"], errors="coerce")
-                   / steps.where(steps > 0))
+    n_random_node = pd.to_numeric(df["n_random_node"], errors="coerce")
+    # no_jumps=True (sampling.durw): CrawlOracle.seed_nodes() zahlt fuer den
+    # Start-Seed denselben Preis wie ein Zufallsknoten und zaehlt ihn deshalb
+    # in n_random_node mit, obwohl er kein Sprung ist -- bei einem Walk ohne
+    # Sprung ist das der *einzige* Eintrag. Abgezogen (nicht auf 0 gesetzt):
+    # spraenge trotz no_jumps=True doch irgendwo durch (Bug), zeigt die Rate
+    # das weiterhin als Kontrolle, statt es zu verdecken.
+    n_random_node = n_random_node.mask(
+        df["estimator"].str.contains("nojump", na=False), n_random_node - 1)
+    df = df.assign(jump_rate=n_random_node / steps.where(steps > 0))
     return (
         # Der Seed ist Teil des Schluessels: zwei Laeufe mit verschiedenen
         # Zufallsstroemen sind verschiedene Laeufe, ihre Spannen duerfen nicht
