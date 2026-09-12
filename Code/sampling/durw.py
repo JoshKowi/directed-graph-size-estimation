@@ -112,6 +112,34 @@ from sampling.base import Sample, Sampler
 from sampling.jumps import JumpStrategy, UniformJump
 
 
+def union_target(oracle, outside: list[int]) -> int:
+    """Sprungziel gleichverteilt auf S u H.
+
+    Die erweiterte Liste ist: die Positionen der Liste (Nieten
+    eingeschlossen), dahinter die besuchten Knoten ausserhalb von S. Eine
+    Position wird gleichverteilt gezogen; bei einer Niete beginnt die
+    *ganze* Ziehung neu. Jeder Knoten aus S u H steht genau einmal darin,
+    das Ziel ist also gleichverteilt darauf -- und dafuer muss niemand
+    wissen, wie viele Listennamen treffen.
+
+    Die Liste kostet wie jede Ziehung (Treffer COST_RANDOM_NODE, Niete
+    COST_DRAW_MISS); ein Knoten aus der Historie ist eigenes Wissen und
+    kostet nichts, die Nachbarabfrage bei Ankunft ist ein Cache-Treffer.
+
+    Modul-Funktion statt Methode, weil sampling.dufs sie unveraendert
+    mitbenutzt: H ist dort die Historie *aller* Walker, an der Ziehung selbst
+    aendert das nichts.
+    """
+    n_list = oracle.list_length()
+    while True:
+        i = oracle.rng.randrange(n_list + len(outside))
+        if i >= n_list:
+            return outside[i - n_list]
+        u = oracle.list_entry(i)
+        if u is not None:
+            return u
+
+
 class DurwSampler(Sampler):
     """DURW ueber Nachbarschaftsabfragen plus Spruenge; liefert die volle
     Trajektorie. Das Aufteilen in Sample-Sets uebernimmt sampling.thinning.
@@ -194,30 +222,6 @@ class DurwSampler(Sampler):
         return (base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
                 + ("|union" if self.union_jumps else "")
                 + ("|nojump" if self.no_jumps else ""))
-
-    @staticmethod
-    def _union_target(oracle, outside: list[int]) -> int:
-        """Sprungziel gleichverteilt auf S u H.
-
-        Die erweiterte Liste ist: die Positionen der Liste (Nieten
-        eingeschlossen), dahinter die besuchten Knoten ausserhalb von S. Eine
-        Position wird gleichverteilt gezogen; bei einer Niete beginnt die
-        *ganze* Ziehung neu. Jeder Knoten aus S u H steht genau einmal darin,
-        das Ziel ist also gleichverteilt darauf -- und dafuer muss niemand
-        wissen, wie viele Listennamen treffen.
-
-        Die Liste kostet wie jede Ziehung (Treffer COST_RANDOM_NODE, Niete
-        COST_DRAW_MISS); ein Knoten aus der Historie ist eigenes Wissen und
-        kostet nichts, die Nachbarabfrage bei Ankunft ist ein Cache-Treffer.
-        """
-        n_list = oracle.list_length()
-        while True:
-            i = oracle.rng.randrange(n_list + len(outside))
-            if i >= n_list:
-                return outside[i - n_list]
-            u = oracle.list_entry(i)
-            if u is not None:
-                return u
 
     def sample(self, oracle) -> list[Sample]:
         w = self.jump_weight
@@ -310,7 +314,7 @@ class DurwSampler(Sampler):
                         # bleibt die des Originals (jeder besuchte Knoten liegt
                         # in H, hat also genau eine sigma-Kante w).
                         if jumped and self.union_jumps:
-                            u = int(self._union_target(oracle, outside))
+                            u = int(union_target(oracle, outside))
                         elif jumped:
                             u = int(self.jump.next_node(oracle))
                         else:

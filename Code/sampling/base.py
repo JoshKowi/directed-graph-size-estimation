@@ -56,6 +56,19 @@ class Sample:
     # m(u) + beta -- Vielfachheit in der Liste plus Historienanteil --, beim
     # Erstbesuch eingefroren wie deg_Gu.
     sigma_weight: float = 1.0
+    # Welcher der k Walker dieses Sample geliefert hat. Nur DufsSampler setzt
+    # das; jeder andere Sampler hat genau einen Walker und bleibt bei 0.
+    #
+    # Nicht mit `walk` verwechseln: `walk` ist der *Fang* (mehrere Faenge
+    # nacheinander, fuer Capture-Recapture), `walker` ist einer von k
+    # gleichzeitig laufenden Walkern innerhalb eines Fangs.
+    #
+    # Nur fuer die Diagnose (check_dufs.py, diagnose_walk.py) -- keine Formel
+    # und keine Gewichtung liest es. Gemessen wurde damit unter anderem, dass
+    # der Safety Margin bei DUFS *nicht* das Problem ist: bei k = 1000 stammen
+    # 99 von 57683 Kollisionspaaren vom selben Walker, der Rest sind
+    # Kreuz-Kollisionen, die kein Margin je erfassen wuerde.
+    walker: int = 0
 
 
 class Sampler(ABC):

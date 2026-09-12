@@ -394,3 +394,88 @@ python nmmc_trace.py --graph slashdot --plot-only        # nur neu zeichnen
 
 
 
+
+
+===============================================================================
+ DUFS  --  Directed Unbiased Frontier Sampling  (k koordinierte Walker)
+===============================================================================
+DUFS ist DURW mit k Walkern auf einem gemeinsamen G_u (sampling/dufs.py).
+Stationaerverteilung, Sprungregel und Gewichtung sind unveraendert -- verschieden
+ist nur die Autokorrelation der Sample-Folge.
+
+k = 1 ist DURW, und zwar bitgleich. Das ist keine Behauptung, sondern geprueft:
+
+    python check_dufs.py --graph slashdot
+    python check_dufs.py --graph gpt-4-io --views directed --budgets 0.0002
+
+WICHTIG -- k kostet Einlaufbudget. Jeder Walker braucht b = B/k Queries, um aus
+seinem Startknoten heraus zu mischen. Ist b zu klein, sind die Samples noch die
+(gleichverteilten) Startknoten und ihre unmittelbare Nachbarschaft, und der
+Kollisionsschaetzer sieht massiv Kreuz-Kollisionen auf den Hubs. Gemessen auf
+Slashdot0811 gerichtet, n_hat/|V|, Median aus 5 Laeufen:
+
+    Budget            0.01    0.05     0.2     0.5     1.0
+    wis-durw                 1.191   1.034   1.015   1.012   1.009
+    dufs k=1                 1.247   1.079   1.044   1.017   1.007
+    dufs k=10                0.575   0.896   1.038   1.021   1.004
+    dufs k=100               0.040   0.482   0.960   1.014   1.002
+
+Alle Spalten konvergieren gegen 1 -- der Einbruch links ist Einlauf, keine
+Verzerrung. Faustregel aus dem Paper: b zwischen 10 und 1000. Bei Budget
+0.01*|V| auf Slashdot (773 Queries) heisst das k <= 77, praktisch k = 10.
+Also: k nicht ueber die ganze Budget-Leiter konstant halten, sondern zum
+Budget passend waehlen.
+
+Nicht nestbar. Die Zahl der Startknoten ist auf config.DUFS_MAX_SEED_SHARE des
+Budgets gedeckelt, die Ziehung haengt also vom Budget ab -- --checkpoint-budgets
+laeuft fuer DUFS je Budget einzeln (dieselbe Lage wie bei capture-recapture).
+Das ist in estimators/methods/dufs.py per supports_nested = False hinterlegt und
+mit check_nested.py nachgewiesen; --share-walks funktioniert normal.
+
+-------------------------------------------------------------------------------
+ F  k-Sweep, gleichverteilter Sprung
+-------------------------------------------------------------------------------
+python run_experiment.py --graphs slashdot gpt-4-io gpt-4o-io --views directed \
+    --estimators wis-durw__uniform__margin \
+                 wis-dufs__uniform__k1__margin \
+                 wis-dufs__uniform__k10__margin \
+                 wis-dufs__uniform__k100__margin \
+                 wis-dufs__uniform__k1000__margin \
+    --budgets 0.001 0.005 0.01 0.05 0.1 --runs 10 --share-walks --jobs 12
+
+python plot_results.py --graphs gpt4_io gpt4o_io --views directed \
+    --match '^wis-durw__uniform__margin$' '^wis-dufs__uniform__k\d+__margin$' \
+    --keep-order
+
+# Beliebiges k geht ohne Registry-Eintrag:
+#   wis-dufs__uniform__k250__margin, wis-dufs__uniform__k250__nojump__margin
+
+-------------------------------------------------------------------------------
+ G  Namenslisten: Startknoten UND Sprung aus der Liste
+-------------------------------------------------------------------------------
+Bei DUFS liefert die Liste beides. Kreuz-Regel fuer die In-Grad-Listen wie oben
+beachten (gpt4_io -> indeg-gpt4o_io und umgekehrt).
+
+python run_experiment.py --graphs gpt-4-io --views directed \
+    --estimators durw-top-q__b0__margin \
+                 dufs-top-q__k10__b0__margin \
+                 dufs-top-q__k100__b0__margin \
+                 dufsunion-top-q__k10__b0__margin \
+                 dufsunion-top-q__k100__b0__margin \
+    --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12
+
+-------------------------------------------------------------------------------
+ H  Ohne Sprung: k Startknoten aus der Liste, danach reiner RW auf G_u
+-------------------------------------------------------------------------------
+Die Variante, die es bei DURW so nicht geben konnte: durw-plain__nojump startet
+bei den festen config.SEED_NODES und bleibt in deren Komponente haengen. Mit k
+ueber die Liste verteilten Startknoten faellt diese Einschraenkung weg -- und
+das Verfahren braucht dabei kein einziges random_node() (n_random_node in der
+Ergebnis-CSV ist exakt k).
+
+python run_experiment.py --graphs gpt-4-io gpt-4o-io --views directed \
+    --estimators wis-durw__nojump__margin \
+                 dufs-top-q__k10__b0__nojump__margin \
+                 dufs-top-q__k100__b0__nojump__margin \
+                 dufs-top-q__k1000__b0__nojump__margin \
+    --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12

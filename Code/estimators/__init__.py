@@ -44,7 +44,7 @@ import config
 import namelists
 from estimators.base import Category, Estimator
 from estimators.methods import (capture_recapture, deg_weighted_independent,
-                                durw, name_list_collision, nmmc,
+                                dufs, durw, name_list_collision, nmmc,
                                 random_walk_collision, short_walk_independent,
                                 uniform_collision)
 from sampling.dead_ends import DEAD_ENDS
@@ -384,6 +384,110 @@ for _src in ("indeg-gpt4_io", "indeg-gpt4o_io"):
             _cat)
 del _src, _cat, _w
 
+# -- DUFS: dasselbe mit k koordinierten Walkern ---------------------------
+# DUFS ist DURW mit k Walkern auf einem gemeinsamen G_u (sampling.dufs).
+# Stationaerverteilung, Sprungregel und Gewichtung sind identisch -- verschieden
+# ist nur die Autokorrelation der Sample-Folge, und genau die entscheidet, was
+# der Kollisionsschaetzer sieht. k = 1 *ist* DURW und gehoert als Gegenprobe in
+# jeden Plot (Code/check_dufs.py prueft die Gleichheit bitgenau).
+#
+# Das k steht als `k<K>` im Namen -- `b<N>`, `n<N>` und `w<N>` sind im Repo
+# schon fuer draw_burn_in, Listenlaenge und Sprunggewicht belegt. Es steht
+# jeweils *vor* dem margin-Slot, damit "...__margin<N>" weiter aufgeloest wird,
+# dieselbe Stellung wie beim w-Sweep.
+#
+# Bewusst *nicht* uebernommen: `durwhist-*` (nicht mehr gebraucht) und
+# `durwset-*` (widerlegt, s. weighting.DurwJumpSetWeighting -- es steht nur
+# noch da, damit die vorhandenen Ergebnisse ihre Bedeutung behalten; fuer DUFS
+# gibt es keine zu erhalten).
+
+
+def _dufs_entry(category: Category, **kwargs) -> Entry:
+    """Die Standardachse: kein Thinning, Safety Margin, gradkorrigiert."""
+    return Entry(partial(dufs.build, thinning="none",
+                         margin=config.SAFETY_MARGIN,
+                         formula="wis-col-katzir", **kwargs), category)
+
+
+for _k in config.DUFS_WALKER_COUNTS:
+    _cat = _JUMP_CATEGORY["uniform"]
+    for _thinning in THINNINGS:
+        REGISTRY[f"dufs-plain__uniform__k{_k}__{_thinning}"] = Entry(
+            partial(dufs.build, thinning=_thinning, n_walkers=_k,
+                    formula="uis-collision"), _cat)
+        _name = (f"wis-dufs__uniform__k{_k}" if _thinning == "none"
+                 else f"wis-dufs__uniform__k{_k}__{_thinning}")
+        REGISTRY[_name] = Entry(
+            partial(dufs.build, thinning=_thinning, n_walkers=_k,
+                    formula="wis-col-katzir"), _cat)
+    for _tag, _f in (("dufs-plain", "uis-collision"), ("wis-dufs", "wis-col-katzir")):
+        REGISTRY[f"{_tag}__uniform__k{_k}__margin"] = Entry(
+            partial(dufs.build, thinning="none", n_walkers=_k,
+                    margin=config.SAFETY_MARGIN, formula=_f), _cat)
+    # Ohne Sprung, Startknoten gleichverteilt aus V. Anders als
+    # durw-plain__nojump ist das COMPARISON: die k Startknoten kommen hier aus
+    # V, nicht aus externem Wissen (s. estimators/methods/dufs.py).
+    REGISTRY[f"wis-dufs__uniform__k{_k}__nojump__margin"] = _dufs_entry(
+        _cat, n_walkers=_k, no_jumps=True)
+# w-Sweep bewusst nur beim Default-k: gefragt ist die Wirkung von w, nicht die
+# von w x k. Das k-Sweep-Gegenstueck laeuft bei w = DURW_JUMP_WEIGHT.
+for _w in config.DURW_JUMP_WEIGHTS:
+    REGISTRY[f"wis-dufs__uniform__k{config.DUFS_WALKERS}__w{_w:g}__margin"] = \
+        _dufs_entry(_JUMP_CATEGORY["uniform"], n_walkers=config.DUFS_WALKERS,
+                    jump_weight=_w)
+
+# Namenslisten. Sie liefern bei DUFS *zwei* Dinge: das Sprungziel und die k
+# Startknoten -- letzteres ist der Grund, warum die nojump-Variante hier
+# ueberhaupt Sinn ergibt und REALIZABLE bleibt.
+for _src in sorted(namelists.SOURCES):
+    _cat = _JUMP_CATEGORY[_src]
+    for _n in (None,) + tuple(config.DRAW_LIMITS):
+        _tag = f"__n{_n}" if _n else ""
+        # k-Sweep ueber alle Listenlaengen, aber nur bei b = 0.
+        for _k in config.DUFS_WALKER_COUNTS:
+            REGISTRY[f"dufs-{_src}{_tag}__k{_k}__b0__margin"] = _dufs_entry(
+                _cat, jump=_src, draw_burn_in=0, draw_limit=_n, n_walkers=_k)
+        # Burn-in nur beim Default-k -- wie beim w-Sweep: eine Achse je Sweep.
+        for _b in config.DRAW_BURN_INS:
+            if _b:
+                REGISTRY[f"dufs-{_src}{_tag}__k{config.DUFS_WALKERS}__b{_b}__margin"] = \
+                    _dufs_entry(_cat, jump=_src, draw_burn_in=_b, draw_limit=_n,
+                                n_walkers=config.DUFS_WALKERS)
+    # Sprung auf S u H und die sprunglose Variante nur fuer die volle Liste:
+    # gefragt ist die Wirkung von k, nicht die von k x Listenlaenge.
+    for _k in config.DUFS_WALKER_COUNTS:
+        REGISTRY[f"dufsunion-{_src}__k{_k}__b0__margin"] = _dufs_entry(
+            _cat, jump=_src, draw_burn_in=0, n_walkers=_k, union_jumps=True)
+        # k Startknoten aus der Liste, danach reiner Random Walk auf G_u. Die
+        # Zusammenhangs-Einschraenkung von durw-plain__nojump faellt hier viel
+        # milder aus, weil k ueber die Liste verteilte Startpunkte viele
+        # Komponenten treffen (s. sampling.dufs).
+        REGISTRY[f"dufs-{_src}__k{_k}__b0__nojump__margin"] = _dufs_entry(
+            _cat, jump=_src, draw_burn_in=0, n_walkers=_k, no_jumps=True)
+del _src, _cat, _b, _n, _tag, _k, _w, _thinning, _name, _f
+
+# Sprung bzw. Startknoten aus einer Zufallsteilmenge -- dieselbe Achse wie
+# durw-rand<P>, damit DUFS auch auf Graphen ohne Namensliste laeuft.
+# Beliebige Anteile und beliebige k loest build() ueber _DUFS_RAND_RE auf.
+_DUFS_RAND_VARIANTS = {"dufs": {}, "dufsunion": {"union_jumps": True}}
+
+
+def _dufs_rand_entry(variant: str, percent: float, n_walkers: int,
+                     no_jumps: bool = False) -> Entry:
+    return _dufs_entry(Category.COMPARISON, jump=f"rand{percent:g}",
+                       n_walkers=n_walkers, no_jumps=no_jumps,
+                       **_DUFS_RAND_VARIANTS[variant])
+
+
+for _p in config.JUMP_SUBSET_PERCENTS:
+    for _k in config.DUFS_WALKER_COUNTS:
+        for _v in _DUFS_RAND_VARIANTS:
+            REGISTRY[f"{_v}-rand{_p:g}__k{_k}__b0__margin"] = _dufs_rand_entry(
+                _v, _p, _k)
+        REGISTRY[f"dufs-rand{_p:g}__k{_k}__b0__nojump__margin"] = _dufs_rand_entry(
+            "dufs", _p, _k, no_jumps=True)
+del _p, _k, _v
+
 # -- NMMC: Non-Markovian Monte Carlo (Lee/Kang/Eun 2019) -----------------
 # Rejection auf dem Simple Random Walk: ein abgelehnter Zug absorbiert die
 # Kette, die daraufhin auf ihre eigene gewichtete Historie umverteilt wird
@@ -519,14 +623,37 @@ _NUMBERED_RE = re.compile(r"^(?P<base>.+__(?P<kind>" + "|".join(_NUMBERED)
 _RAND_RE = re.compile(r"^(?P<v>" + "|".join(_RAND_VARIANTS)
                       + r")-rand(?P<p>\d+(?:\.\d+)?)__b0__margin$")
 
+# Dieselben beiden freien Achsen bei DUFS -- Anteil P *und* Walker-Zahl k:
+#   "dufs-rand2.5__k250__b0__margin", "dufsunion-rand10__k7__b0__margin",
+#   "dufs-rand10__k250__b0__nojump__margin"
+_DUFS_RAND_RE = re.compile(r"^(?P<v>" + "|".join(_DUFS_RAND_VARIANTS)
+                           + r")-rand(?P<p>\d+(?:\.\d+)?)__k(?P<k>\d+)"
+                           + r"__b0(?P<nj>__nojump)?__margin$")
+# Beliebiges k beim gleichverteilten Sprung:
+#   "wis-dufs__uniform__k250__margin", "wis-dufs__uniform__k250__nojump__margin"
+_DUFS_UNIFORM_RE = re.compile(
+    r"^wis-dufs__uniform__k(?P<k>\d+)(?P<nj>__nojump)?__margin$")
+
 
 def _lookup(name: str):
     entry = REGISTRY.get(name)
-    if entry is None:
-        m = _RAND_RE.match(name)
-        if m and 0 < float(m.group("p")) <= 100:
-            entry = _rand_entry(m.group("v"), float(m.group("p")))
-    return entry
+    if entry is not None:
+        return entry
+    m = _RAND_RE.match(name)
+    if m and 0 < float(m.group("p")) <= 100:
+        return _rand_entry(m.group("v"), float(m.group("p")))
+    m = _DUFS_RAND_RE.match(name)
+    # dufsunion ohne Sprung gibt es nicht -- dufs.build() wuerde es ablehnen,
+    # aber ein KeyError sagt hier deutlicher, dass der Name nicht existiert.
+    if (m and 0 < float(m.group("p")) <= 100 and int(m.group("k")) >= 1
+            and not (m.group("v") == "dufsunion" and m.group("nj"))):
+        return _dufs_rand_entry(m.group("v"), float(m.group("p")),
+                                int(m.group("k")), no_jumps=bool(m.group("nj")))
+    m = _DUFS_UNIFORM_RE.match(name)
+    if m and int(m.group("k")) >= 1:
+        return _dufs_entry(_JUMP_CATEGORY["uniform"], n_walkers=int(m.group("k")),
+                           no_jumps=bool(m.group("nj")))
+    return None
 
 
 def build(name: str) -> Estimator:
@@ -543,7 +670,10 @@ def build(name: str) -> Estimator:
             "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
             "fuer eine abweichende Thinning-Schrittweite, "
             "'<durw|durwset|durwhist|durwunion>-rand<P>__b0__margin' fuer einen Sprung auf "
-            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100)."
+            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100, sowie "
+            "'<dufs|dufsunion>-rand<P>__k<K>__b0[__nojump]__margin' und "
+            "'wis-dufs__uniform__k<K>[__nojump]__margin' fuer eine abweichende "
+            "Walker-Zahl K)."
         )
     # partial-Keywords werden von Aufruf-Keywords ueberschrieben
     est = entry.factory(**kwargs)

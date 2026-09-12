@@ -203,6 +203,29 @@ DURW_JUMP_WEIGHT = 1.0
 # w=100 -> 0,683 bei 94 % Spruengen).
 DURW_JUMP_WEIGHTS = (0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0)
 
+# --- DUFS (sampling.dufs) ----------------------------------------------
+# Zahl der koordinierten Walker k. DUFS ist DURW mit k statt einem Walker:
+# gezogen wird jeweils der Walker mit Wahrscheinlichkeit ~ (w + deg_Gu), dessen
+# Position dann das Sample ist. Die Stationaerverteilung ist dieselbe wie bei
+# DURW -- der Unterschied liegt allein in der Autokorrelation, denn
+# aufeinanderfolgende Samples stammen aus verschiedenen Regionen des Graphen.
+# k = 1 *ist* DURW (siehe check_dufs.py).
+DUFS_WALKERS = 100
+
+# k-Werte, fuer die eigene Registry-Eintraege entstehen (dufs-...__k<K>__...).
+# k = 1 ist die Gegenprobe gegen DURW, sie gehoert in jeden Plot. Mehr als vier
+# Werte passen nicht neben die uebrigen Kurven -- plot_results.py stellt
+# hoechstens acht Estimators je Bild dar.
+DUFS_WALKER_COUNTS = (1, 10, 100, 1000)
+
+# Hoechster Anteil des Budgets, den die k Startknoten verbrauchen duerfen.
+# k Seeds kosten k * COST_RANDOM_NODE (bei Namenslisten zuzueglich der Nieten);
+# ohne Deckel liefe DUFS bei kleinem Budget und grossem k gar keinen Schritt
+# mehr und der Kollisionsschaetzer haette nichts zu zaehlen. Ueberschreitet k
+# den Deckel, laeuft der Lauf mit entsprechend weniger Walkern -- wie viele es
+# waren, steht ueber n_random_node in der Ergebnis-CSV.
+DUFS_MAX_SEED_SHARE = 0.5
+
 # --- NMMC (sampling.nmmc) ----------------------------------------------
 # alpha der Gewichtsfolge w_k = k^alpha, mit der die Umverteilung ihre eigene
 # Historie gewichtet. Es ist eine *Gedaechtnislaenge*: alpha = 0 zieht
