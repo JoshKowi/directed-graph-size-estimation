@@ -325,6 +325,15 @@ for _src in sorted(namelists.SOURCES):
                             margin=config.SAFETY_MARGIN,
                             formula="wis-col-katzir",
                             union_jumps=True), _cat)
+                # Dieselbe Idee, aber H sind alle *gesehenen* Knoten statt nur
+                # der besuchten (sampling.durw, `union_seen`) -- wächst
+                # schneller, weil auch unbesuchte Nachbarn dazuzählen.
+                REGISTRY[f"durwunionE-{_src}{_tag}__b0__margin"] = Entry(
+                    partial(durw.build, jump=_src, thinning="none",
+                            draw_burn_in=0, draw_limit=_n,
+                            margin=config.SAFETY_MARGIN,
+                            formula="wis-col-katzir",
+                            union_seen=True), _cat)
                 REGISTRY[f"durwset-{_src}{_tag}__b0__margin"] = Entry(
                     partial(durw.build, jump=_src, thinning="none",
                             draw_burn_in=0, draw_limit=_n,
@@ -389,6 +398,11 @@ for _form, _f in _IE2_FORMS:
                         margin=config.SAFETY_MARGIN, formula=_f, a_source=_a,
                         union_jumps=True),
                 _JUMP_CATEGORY[_src])
+            REGISTRY[f"{_form}-durwunionE-{_src}{_atag}__b0__margin"] = Entry(
+                partial(durw.build, jump=_src, thinning="none", draw_burn_in=0,
+                        margin=config.SAFETY_MARGIN, formula=_f, a_source=_a,
+                        union_seen=True),
+                _JUMP_CATEGORY[_src])
 
 del _form, _f, _atag, _a, _src
 
@@ -403,6 +417,8 @@ del _form, _f, _atag, _a, _src
 #   durwhist-rand<P>__b0__margin   Sprung auf S u H, reversibel, S n H doppelt
 #   durwunion-rand<P>__b0__margin  Sprung gleichverteilt auf S u H, Gewicht
 #                                  des Originals; bei P = 100 das Original
+#   durwunionE-rand<P>__b0__margin dasselbe, aber H sind alle *gesehenen*
+#                                  Knoten statt nur der besuchten
 #
 # Damit laufen die Varianten auf jedem Graphen, auch ohne Namensliste, und die
 # Frage "was kostet es, dass der Sprung nur einen Teil von V erreicht?" laesst
@@ -415,12 +431,15 @@ del _form, _f, _atag, _a, _src
 # Beliebige Anteile ("durwhist-rand2.5__b0__margin") loest build() auf.
 # Dieselben Varianten mit IE2 statt Knoten-Kollisionen ("ie2-durw-rand10__
 # b0__margin", "ie2m-durwunion-rand2.5__b0__margin", je auch mit "__gu"). Nur
-# fuer durw und durwunion -- durwset ist widerlegt und durwhist wird nicht mehr
-# gebraucht (s. oben), eine IE2-Fassung davon waere toter Ballast.
+# fuer durw, durwunion und durwunionE -- durwset ist widerlegt und durwhist
+# wird nicht mehr gebraucht (s. oben), eine IE2-Fassung davon waere toter
+# Ballast.
 _RAND_VARIANTS = {"durw": {}, "durwset": {"jump_set_weighting": True},
                   "durwhist": {"history_jumps": True},
-                  "durwunion": {"union_jumps": True}}
-_IE2_RAND_VARIANTS = {"durw": {}, "durwunion": {"union_jumps": True}}
+                  "durwunion": {"union_jumps": True},
+                  "durwunionE": {"union_seen": True}}
+_IE2_RAND_VARIANTS = {"durw": {}, "durwunion": {"union_jumps": True},
+                      "durwunionE": {"union_seen": True}}
 
 
 def _rand_entry(variant: str, percent: float, formula: str = "wis-col-katzir",
@@ -750,9 +769,10 @@ def build(name: str) -> Estimator:
             f"{', '.join(sorted(REGISTRY))} (dazu '...__margin<N>' fuer einen "
             "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
             "fuer eine abweichende Thinning-Schrittweite, "
-            "'<durw|durwset|durwhist|durwunion>-rand<P>__b0__margin' fuer einen Sprung auf "
-            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100, "
-            "'<ie2|ie2m>-<durw|durwunion>-rand<P>[__gu]__b0__margin' fuer "
+            "'<durw|durwset|durwhist|durwunion|durwunionE>-rand<P>__b0__margin' "
+            "fuer einen Sprung auf eine Zufallsteilmenge mit P % der Knoten, "
+            "0 < P <= 100, "
+            "'<ie2|ie2m>-<durw|durwunion|durwunionE>-rand<P>[__gu]__b0__margin' fuer "
             "dieselbe Teilmenge mit IE2, sowie "
             "'<dufs|dufsunion>-rand<P>__k<K>__b0[__nojump]__margin' und "
             "'wis-dufs__uniform__k<K>[__nojump]__margin' fuer eine abweichende "

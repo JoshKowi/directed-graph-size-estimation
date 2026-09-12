@@ -117,6 +117,7 @@ def build(
     history_jumps: bool = False,
     history_weight: float = 1.0,
     union_jumps: bool = False,
+    union_seen: bool = False,
     no_jumps: bool = False,
     aggregate=np.median,
 ) -> PipelineEstimator:
@@ -124,20 +125,20 @@ def build(
     # sampling.durw). Jede Sprung-Option ist dann bedeutungslos -- wer sie
     # trotzdem setzt, meint vermutlich etwas anderes als das, was passiert.
     if no_jumps and (jump != "uniform" or jump_weight != config.DURW_JUMP_WEIGHT
-                     or history_jumps or union_jumps or jump_set_weighting
-                     or draw_burn_in or draw_limit):
+                     or history_jumps or union_jumps or union_seen
+                     or jump_set_weighting or draw_burn_in or draw_limit):
         raise ValueError(
             "no_jumps schliesst jede Sprung-Option aus -- ohne Sprung haben "
-            "jump/jump_weight/history_jumps/union_jumps/jump_set_weighting/"
-            "draw_burn_in/draw_limit keine Wirkung mehr.")
+            "jump/jump_weight/history_jumps/union_jumps/union_seen/"
+            "jump_set_weighting/draw_burn_in/draw_limit keine Wirkung mehr.")
     # `union_jumps`: Sprung gleichverteilt auf S u H, Absprungregel und Gewicht
     # des Originals (sampling.durw). Die Liste muss dafuer jeden Knoten nur
     # einmal enthalten -- das Oracle bekommt deshalb unique=True.
     if union_jumps:
-        if history_jumps or jump_set_weighting:
-            raise ValueError("union_jumps schliesst history_jumps und "
-                             "jump_set_weighting aus -- es bringt die "
-                             "Gewichtung des Originals mit.")
+        if history_jumps or union_seen or jump_set_weighting:
+            raise ValueError("union_jumps schliesst history_jumps, union_seen "
+                             "und jump_set_weighting aus -- alle bringen ihre "
+                             "eigene Vorstellung von H bzw. Gewichtung mit.")
         if jump == "uniform":
             raise ValueError(
                 "union_jumps mit jump='uniform' ist das Original -- S = V, "
@@ -147,6 +148,22 @@ def build(
             raise ValueError(
                 f"union_jumps braucht draw_burn_in = 0, ist {draw_burn_in}: "
                 "mit Burn-in laege das Sprungziel nicht mehr in S u H.")
+    # `union_seen`: wie union_jumps, aber H sind alle je *gesehenen* Knoten
+    # (auch nur als Nachbar beobachtete, noch nicht besuchte) statt nur der
+    # tatsaechlich besuchten. Dieselbe Gewichtung, dieselben Randbedingungen.
+    if union_seen:
+        if history_jumps or jump_set_weighting:
+            raise ValueError("union_seen schliesst history_jumps und "
+                             "jump_set_weighting aus -- es bringt die "
+                             "Gewichtung des Originals mit.")
+        if jump == "uniform":
+            raise ValueError(
+                "union_seen mit jump='uniform' ist das Original -- S = V, "
+                "gesehene Knoten fuegen nichts hinzu.")
+        if draw_burn_in:
+            raise ValueError(
+                f"union_seen braucht draw_burn_in = 0, ist {draw_burn_in}: "
+                "mit Burn-in laege das Sprungziel nicht mehr in S u H_gesehen.")
     # `history_jumps`: Sprung auf S u H, mit passender Sprungregel *und*
     # Gewichtung -- die korrekte Fassung dessen, was jump_set_weighting
     # versucht hat. Siehe weighting.DurwSigmaWeighting.
@@ -204,7 +221,8 @@ def build(
                                  cost_miss=cost_miss, limit=draw_limit,
                                  # nur wenn gesetzt: sonst aendert sich der
                                  # Walk-Schluessel der vorhandenen Estimators
-                                 **({"unique": True} if union_jumps else {}))
+                                 **({"unique": True}
+                                    if (union_jumps or union_seen) else {}))
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     # Nur die IE2-Formeln brauchen die Nachbarlisten -- und nur sie kennen
@@ -248,6 +266,7 @@ def build(
                 + ("__inS" if jump_set_weighting else "")
                 + (f"__hist{history_weight:g}" if history_jumps else "")
                 + ("__union" if union_jumps else "")
+                + ("__unionE" if union_seen else "")
                 + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
                 + (f"__m{margin}" if margin else ""))
         sampler = DurwSampler(jump=jump_strategy(jump), jump_weight=jump_weight,
@@ -255,6 +274,7 @@ def build(
                               history_jumps=history_jumps,
                               history_weight=history_weight,
                               union_jumps=union_jumps,
+                              union_seen=union_seen,
                               collect_nbrs=needs_nbrs)
 
     return PipelineEstimator(

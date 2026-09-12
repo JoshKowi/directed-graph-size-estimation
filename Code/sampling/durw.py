@@ -97,6 +97,20 @@ Wichtig fuer alles, was danach kommt: `Sample.degree` traegt hier den Grad in
 G_u, *nicht* den Ausgangsgrad wie bei RandomWalkSampler. InverseDegreeWeighting
 passt damit nicht zu DURW -- die richtige Gewichtung ist DurwWeighting.
 
+**`union_seen` (durwunionE-*): Sprung gleichverteilt auf S u H_gesehen.**
+Dieselbe Konstruktion wie `union_jumps`, nur ist H hier nicht auf *besuchte*
+Knoten beschraenkt, sondern jeder Knoten, den der Walk je zu Gesicht bekommen
+hat -- auch einer, der nur als Nachbar eines besuchten Knotens aufgetaucht,
+selbst aber noch nicht an der Reihe war. H waechst also schon beim ersten
+Blick auf eine Kante, nicht erst beim Ankommen; jeder Knoten zaehlt trotzdem
+nur einmal (`seen_marked` dedupliziert die zwei Wege, wie ein Knoten entdeckt
+werden kann: als Nachbar zuerst, dann irgendwann besucht, oder direkt
+besucht). Sigma-Kante, Absprungregel und Gewicht sind identisch zu
+`union_jumps` (dieselbe DurwWeighting) -- nur die Menge dahinter ist groesser
+und waechst schneller, weil sie nicht auf den tatsaechlichen Walk-Pfad
+beschraenkt ist. `union_jumps` und `union_seen` schliessen sich gegenseitig
+aus, beide sind Auspraegungen derselben Idee (H erweitert S).
+
 **`collect_nbrs` (fuer IE2).** Beide Nachbarschaften, die hier entstehen,
 werden normalerweise am Ende weggeworfen: die rohe Antwort des Oracles (`out`)
 und die eingefrorene G_u-Nachbarschaft (`adj`). Mit `collect_nbrs=True` bleiben
@@ -193,6 +207,7 @@ class DurwSampler(Sampler):
         history_jumps: bool = False,
         history_weight: float = 1.0,
         union_jumps: bool = False,
+        union_seen: bool = False,
         no_jumps: bool = False,
         collect_nbrs: bool = False,
     ) -> None:
@@ -218,13 +233,23 @@ class DurwSampler(Sampler):
         self.union_jumps = bool(union_jumps)
         if self.union_jumps and self.history_jumps:
             raise ValueError("union_jumps und history_jumps schliessen sich aus.")
+        # Wie union_jumps, nur ist H hier nicht auf besuchte Knoten
+        # beschraenkt, sondern jeder je *gesehene* Knoten -- auch einer, der
+        # nur als Nachbar aufgetaucht, aber noch nicht besucht ist. S. Modul-
+        # Docstring, Abschnitt "union_seen".
+        self.union_seen = bool(union_seen)
+        if self.union_seen and (self.history_jumps or self.union_jumps):
+            raise ValueError(
+                "union_seen schliesst history_jumps und union_jumps aus -- "
+                "alle drei sind Sprungziel-Strategien fuer H.")
         # Ganz ohne Sprung -- s. Modul-Docstring, Abschnitt "no_jumps". Schliesst
         # jede Sprungziel-Strategie aus, es gibt ja keinen Sprung mehr.
         self.no_jumps = bool(no_jumps)
-        if self.no_jumps and (self.history_jumps or self.union_jumps):
+        if self.no_jumps and (self.history_jumps or self.union_jumps or self.union_seen):
             raise ValueError(
-                "no_jumps schliesst history_jumps und union_jumps aus -- beides "
-                "sind Sprungziel-Strategien, ohne Sprung bedeutungslos.")
+                "no_jumps schliesst history_jumps, union_jumps und union_seen "
+                "aus -- alle drei sind Sprungziel-Strategien, ohne Sprung "
+                "bedeutungslos.")
         # Nachbarschaften aufbewahren statt verwerfen -- s. Modul-Docstring.
         self.collect_nbrs = bool(collect_nbrs)
         if self.collect_nbrs and self.n_walks > 1:
@@ -251,6 +276,7 @@ class DurwSampler(Sampler):
         # ein observed = None. Der Schluessel trennt die Gruppen deshalb.
         return (base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
                 + ("|union" if self.union_jumps else "")
+                + ("|unionE" if self.union_seen else "")
                 + ("|nojump" if self.no_jumps else "")
                 + ("|nbrs" if self.collect_nbrs else ""))
 
@@ -286,6 +312,16 @@ class DurwSampler(Sampler):
                 # Besuchsreihenfolge -- der Teil der erweiterten Liste, der
                 # nicht schon in der Liste steht.
                 outside: list[int] = []
+                # Nur fuer union_seen: wie `outside`, aber H sind alle je
+                # *gesehenen* Knoten ausserhalb S -- auch ein Knoten, der nur
+                # als Nachbar aufgetaucht ist, aber noch nicht besucht wurde.
+                # `seen_marked` verhindert Dubletten: ein Knoten kann zuerst
+                # als Nachbar auftauchen und erst spaeter besucht werden (oder
+                # umgekehrt direkt besucht werden, ohne vorher Nachbar
+                # gewesen zu sein) -- in jedem Fall zaehlt nur die erste
+                # Entdeckung.
+                outside_seen: list[int] = []
+                seen_marked: set[int] = set()
                 u = int(oracle.seed_nodes(self.n_seeds)[0])
                 step = 0
                 jumped = False   # der Seed selbst ist kein Sprungziel
@@ -308,10 +344,23 @@ class DurwSampler(Sampler):
                             raw[u] = out
                         for v in fresh:
                             back.setdefault(v, []).append(u)
+                            # Erstmals gesehen, nicht schon in S -- egal ob v
+                            # je besucht wird.
+                            if (self.union_seen and v not in seen_marked
+                                    and not oracle.in_jump_set(v)):
+                                outside_seen.append(v)
+                                seen_marked.add(v)
                         if self.history_jumps:
                             visited.append(u)
                         if self.union_jumps and not oracle.in_jump_set(u):
                             outside.append(u)
+                        if (self.union_seen and u not in seen_marked
+                                and not oracle.in_jump_set(u)):
+                            # u kann schon als Nachbar gesehen (und markiert)
+                            # gewesen sein, bevor es jetzt besucht wird --
+                            # dann hier nichts tun, sonst doppelt in der Liste.
+                            outside_seen.append(u)
+                            seen_marked.add(u)
                     nbrs = adj[u]
 
                     if step >= self.burn_in:
@@ -347,11 +396,16 @@ class DurwSampler(Sampler):
                     elif not self.history_jumps:
                         # Original-DURW: jeder Knoten springt mit w/(w + deg).
                         jumped = oracle.rng.random() < w / (w + len(nbrs))
-                        # union_jumps aendert nur das *Ziel*: die Absprungregel
-                        # bleibt die des Originals (jeder besuchte Knoten liegt
-                        # in H, hat also genau eine sigma-Kante w).
+                        # union_jumps/union_seen aendern nur das *Ziel*: die
+                        # Absprungregel bleibt die des Originals (jeder
+                        # besuchte Knoten liegt in H, hat also genau eine
+                        # sigma-Kante w) -- union_target ist fuer beide
+                        # identisch, nur die Liste dahinter ist verschieden
+                        # gross.
                         if jumped and self.union_jumps:
                             u = int(union_target(oracle, outside))
+                        elif jumped and self.union_seen:
+                            u = int(union_target(oracle, outside_seen))
                         elif jumped:
                             u = int(self.jump.next_node(oracle))
                         else:
