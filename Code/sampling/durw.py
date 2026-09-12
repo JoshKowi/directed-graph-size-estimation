@@ -45,6 +45,17 @@ Was hier *nicht* vorkommt:
                 haben 51 % der besuchten Sackgassen deg_Gu >= 1, auf gpt4_io
                 70 %; ihr mittlerer G_u-Grad ist 0,75 bzw. 1,22. Sie springen
                 also haeufig (im Mittel 73 % bzw. 60 %), aber nicht immer.
+
+    no_jumps -- w -> 0, ganz ohne Sprung (s. `no_jumps` unten). Ein ueber eine
+                echte Kante erreichter Knoten hat deg_Gu >= 1 immer schon: die
+                Kante, ueber die der Walk gerade gekommen ist, wurde beim
+                Besuch des Vorgaengers als back-Eintrag hinterlegt. deg_Gu = 0
+                kann deshalb nur der allererste Knoten eines Fangs sein (kein
+                Vorgaenger, keine back-Kante) -- und auch nur, wenn er zugleich
+                ein echter Sink ist (deg_out = 0). Genau das Gegenstueck zur
+                Randbedingung in sampling.dead_ends fuer die undirected View
+                ("nur ein voellig isolierter Seed kann dort eine Sackgasse
+                sein").
     allow_self_loops -- graphs.graph._simplify() entfernt Schlingen bereits
                 beim Laden, in G_u kann keine entstehen.
 
@@ -117,6 +128,18 @@ class DurwSampler(Sampler):
     der zweite Fang die eingefrorenen Grade des ersten und die beiden Faenge
     waeren ueber diese Historie voneinander abhaengig. Jeder Fang ist so fuer
     sich ein gueltiger DURW-Lauf mit eigenem, gueltigem pi.
+
+    `no_jumps=True` ist der Grenzfall w -> 0: ein reiner Random Walk auf G_u,
+    ganz ohne Sprung. Begruendung s. Modul-Docstring, Abschnitt "no_jumps" --
+    kurz: jeder ueber eine echte Kante erreichte Knoten hat deg_Gu >= 1 schon
+    von der Ankunftskante her, `len(nbrs) == 0` kann also nur am allerersten
+    Knoten eines Fangs auftreten (kein Vorgaenger), und auch dort nur, wenn er
+    zugleich ein echter Sink ist -- dann endet dieser Fang dort, statt an
+    einer 0/0-Division zu scheitern. Einschraenkung: pi(v) ~ deg_Gu(v) gilt
+    nur innerhalb der schwach zusammenhaengenden Komponente des Seeds, denn
+    ohne Sprung erreicht der Walk keine andere Komponente je (vgl.
+    diagnose_walk.diagnose_connectivity -- auf den hier verwendeten Graphen
+    deckt die groesste WCC praktisch alles ab).
     """
 
     def __init__(
@@ -129,6 +152,7 @@ class DurwSampler(Sampler):
         history_jumps: bool = False,
         history_weight: float = 1.0,
         union_jumps: bool = False,
+        no_jumps: bool = False,
     ) -> None:
         self.jump = jump or UniformJump()
         self.jump_weight = float(jump_weight)
@@ -152,6 +176,13 @@ class DurwSampler(Sampler):
         self.union_jumps = bool(union_jumps)
         if self.union_jumps and self.history_jumps:
             raise ValueError("union_jumps und history_jumps schliessen sich aus.")
+        # Ganz ohne Sprung -- s. Modul-Docstring, Abschnitt "no_jumps". Schliesst
+        # jede Sprungziel-Strategie aus, es gibt ja keinen Sprung mehr.
+        self.no_jumps = bool(no_jumps)
+        if self.no_jumps and (self.history_jumps or self.union_jumps):
+            raise ValueError(
+                "no_jumps schliesst history_jumps und union_jumps aus -- beides "
+                "sind Sprungziel-Strategien, ohne Sprung bedeutungslos.")
         self.name = f"durw_{self.jump.name}"
 
     def key(self) -> str:
@@ -161,7 +192,8 @@ class DurwSampler(Sampler):
         # Nur wenn eingeschaltet -- sonst bleibt der Schluessel der alten
         # Estimators unveraendert und ihre Walk-Gruppen stimmen weiter.
         return (base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
-                + ("|union" if self.union_jumps else ""))
+                + ("|union" if self.union_jumps else "")
+                + ("|nojump" if self.no_jumps else ""))
 
     @staticmethod
     def _union_target(oracle, outside: list[int]) -> int:
@@ -259,9 +291,19 @@ class DurwSampler(Sampler):
                         oracle.mark()  # fuer Budget-Zwischenstaende, s. oracles.base
                     step += 1
 
+                    if self.no_jumps:
+                        # len(nbrs) == 0 kann hier nur der allererste Knoten
+                        # dieses Fangs sein (kein Vorgaenger, keine back-
+                        # Kante) und zugleich ein echter Sink -- s.
+                        # Klassen-Docstring. Dann ist der Fang hier zu Ende,
+                        # statt an w/(w+0) zu scheitern.
+                        if not nbrs:
+                            break
+                        jumped = False
+                        u = nbrs[oracle.rng.randrange(len(nbrs))]
                     # Bei deg 0 ist w/(w+0) = 1 -- der Sprung ist dann sicher,
                     # ohne dass es einen eigenen Zweig braucht.
-                    if not self.history_jumps:
+                    elif not self.history_jumps:
                         # Original-DURW: jeder Knoten springt mit w/(w + deg).
                         jumped = oracle.rng.random() < w / (w + len(nbrs))
                         # union_jumps aendert nur das *Ziel*: die Absprungregel

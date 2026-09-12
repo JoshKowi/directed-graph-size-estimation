@@ -213,8 +213,9 @@ def plot_durw_diagnosis(results: list[dict], path: Path | None = None) -> Path:
         _curve(axes[r][0], d, "jump_rate_curve", "jump rate")
         _curve(axes[r][1], d, "dead_end_escape_curve", "dead-end escape rate (deg_Gu >= 1)")
         _curve(axes[r][2], d, "deg_gu_curve", "mean deg_Gu at first visit")
+        w_label = "no jumps (w -> 0)" if d["jump_weight"] is None else f"w={d['jump_weight']:g}"
         axes[r][0].set_title(
-            f"{VIEW_TITLES.get(d['view'], d['view'])} -- DURW w={d['jump_weight']:g}",
+            f"{VIEW_TITLES.get(d['view'], d['view'])} -- DURW {w_label}",
             color=INK, fontsize=10, loc="left", pad=8)
         for c, title in enumerate(("", "dead-end escape", "deg_Gu")):
             if title:

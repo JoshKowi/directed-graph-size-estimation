@@ -39,6 +39,7 @@ Beispiele:
     python diagnose_walk.py --graph Slashdot0811 --dead-end backtrack --budget 0.01
     python diagnose_walk.py --graph gpt4o_io --seed 7
     python diagnose_walk.py --graph gpt4_io --connectivity --jump-weight 10
+    python diagnose_walk.py --graph gpt4_io --connectivity --no-jumps
 """
 
 from __future__ import annotations
@@ -263,7 +264,8 @@ def print_connectivity_report(d):
 
 
 def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_JUMP_WEIGHT,
-                  budget_rel=0.01, seed: int = config.DEFAULT_SEED, n_checkpoints=60):
+                  budget_rel=0.01, seed: int = config.DEFAULT_SEED, n_checkpoints=60,
+                  no_jumps: bool = False):
     """Sprungrate, Sackgassen-Fluchtrate und deg_Gu ueber einen echten DURW-Lauf.
 
     Anders als diagnose(): laeuft DurwSampler statt RandomWalkSampler, weil
@@ -271,6 +273,12 @@ def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_
     nicht als Plateau, sondern als haeufigerer Zwangssprung und niedriger
     deg_Gu bei Erstbesuch (siehe sampling.durw Docstring fuer die Zahlen, die
     das hier reproduzierbar macht).
+
+    `no_jumps=True` laesst den Grenzfall w -> 0 laufen (sampling.durw): keine
+    Spruenge, reiner Random Walk auf G_u. Erwartung, direkt aus dem Argument
+    im Docstring von DurwSampler: Sprungrate durchgehend 0, Fluchtrate nahe
+    100 % (nur ein isolierter Seed koennte darunter liegen) -- ein guter
+    eingebauter Sanity-Check fuer die Korrektheitsargumentation.
     """
     base = build_view(graph, "directed")
     view = build_view(graph, view_name)
@@ -278,9 +286,10 @@ def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_
     budget = max(int(round(budget_rel * n)), 2)
     out_deg = np.diff(base.indptr)
 
-    oracle = JumpCrawlOracle(view, random.Random(f"diag-durw|{seed}|{jump_weight:g}"),
-                             budget, config.DEFAULT_BUDGET_METRIC)
-    sampler = DurwSampler(jump_weight=jump_weight)
+    oracle_cls = CrawlOracle if no_jumps else JumpCrawlOracle
+    oracle = oracle_cls(view, random.Random(f"diag-durw|{seed}|{jump_weight:g}|{no_jumps}"),
+                        budget, config.DEFAULT_BUDGET_METRIC)
+    sampler = DurwSampler(no_jumps=True) if no_jumps else DurwSampler(jump_weight=jump_weight)
     trace = sampler.sample(oracle)
     k = len(trace)
 
@@ -310,7 +319,8 @@ def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_
             ci += 1
 
     return {
-        "graph": graph.name, "view": view_name, "jump_weight": jump_weight, "seed": seed,
+        "graph": graph.name, "view": view_name,
+        "jump_weight": None if no_jumps else jump_weight, "seed": seed,
         "budget_rel": budget_rel, "budget_abs": budget, "steps": k,
         "n_nodes": n, "distinct": len(seen),
         "jump_rate": n_jumped / k if k else float("nan"),
@@ -325,7 +335,8 @@ def diagnose_durw(graph, view_name="directed", jump_weight: float = config.DURW_
 
 def print_durw_report(d):
     n = d["n_nodes"]
-    print(f"\n=== {d['graph']} / {d['view']} / DURW w={d['jump_weight']:g} "
+    w_label = "no jumps (w -> 0)" if d["jump_weight"] is None else f"w={d['jump_weight']:g}"
+    print(f"\n=== {d['graph']} / {d['view']} / DURW {w_label} "
           f"/ seed={d['seed']} ===")
     print(f"Budget {d['budget_rel']:g} = {d['budget_abs']:,} Einheiten, "
           f"{d['steps']:,} Schritte, {d['distinct']:,} verschieden besucht\n"
@@ -354,8 +365,14 @@ def main() -> None:
     p.add_argument("--jump-weight", type=float, default=config.DURW_JUMP_WEIGHT,
                    help=f"w fuer --connectivity's DURW-Lauf "
                         f"(Default: {config.DURW_JUMP_WEIGHT:g})")
+    p.add_argument("--no-jumps", action="store_true",
+                   help="--connectivity's DURW-Lauf ganz ohne Spruenge (w -> 0, "
+                        "sampling.durw); schliesst --jump-weight aus")
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
+
+    if args.no_jumps and args.jump_weight != config.DURW_JUMP_WEIGHT:
+        p.error("--no-jumps und --jump-weight schliessen sich aus")
 
     graph = loader.load_graph(args.graph)   # Kuerzel loest der Loader auf
     results = []
@@ -372,7 +389,8 @@ def main() -> None:
     if args.connectivity:
         print_connectivity_report(diagnose_connectivity(graph))
         durw_results = [
-            diagnose_durw(graph, view, args.jump_weight, args.budget, args.seed)
+            diagnose_durw(graph, view, args.jump_weight, args.budget, args.seed,
+                          no_jumps=args.no_jumps)
             for view in args.views
         ]
         for dd in durw_results:

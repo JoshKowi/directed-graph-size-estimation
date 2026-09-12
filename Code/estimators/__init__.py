@@ -238,6 +238,18 @@ for _jump in ("uniform",):
             partial(capture_recapture.build, sampler="durw", jump=_jump,
                     formula=_cf), _cat)
 
+# DURW ohne Spruenge (w -> 0, sampling.durw no_jumps): reiner Random Walk auf
+# G_u. Braucht keine Kenntnis von V und keine Sprungquelle -- REALIZABLE ohne
+# Einschraenkung, staerker noch als "uniform" (das dafuer COMPARISON ist).
+for _tag, _f in (("durw-plain", "uis-collision"), ("wis-durw", "wis-col-katzir")):
+    REGISTRY[f"{_tag}__nojump"] = Entry(
+        partial(durw.build, thinning="none", formula=_f, no_jumps=True),
+        Category.REALIZABLE)
+REGISTRY["wis-durw__nojump__margin"] = Entry(
+    partial(durw.build, thinning="none", formula="wis-col-katzir",
+            margin=config.SAFETY_MARGIN, no_jumps=True),
+    Category.REALIZABLE)
+
 del _jump, _cat, _thinning, _name, _tag, _f, _cf, _w
 
 # -- Ziehung aus externen Namenslisten ------------------------------------

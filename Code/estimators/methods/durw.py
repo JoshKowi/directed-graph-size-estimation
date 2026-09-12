@@ -24,9 +24,14 @@ Die austauschbaren Achsen:
 "wis-col-katzir" gehoert mit DurwWeighting zusammen: der Walk zieht
 proportional zu (w + deg_Gu), das Gewicht korrigiert genau das. Nicht mit
 InverseDegreeWeighting verwechseln -- die passt zum einfachen Random Walk,
-nicht zu DURW. "uis-collision" ignoriert die Gewichte und unterstellt
-gleichverteilte Ziehungen; die Differenz ist der Preis der Verzerrung, also
-das, was DURW ueberhaupt korrigiert.
+nicht zu DURW *mit Sprung*. "uis-collision" ignoriert die Gewichte und
+unterstellt gleichverteilte Ziehungen; die Differenz ist der Preis der
+Verzerrung, also das, was DURW ueberhaupt korrigiert.
+
+`no_jumps` -- der Grenzfall w -> 0 (sampling.durw): reiner Random Walk auf
+G_u, kein Sprung, keine Sprungoption anwendbar. Dort *ist* pi(v) ~ deg_Gu(v)
+ohne Sigma-Term, und InverseDegreeWeighting (liest denselben `Sample.degree`)
+ist dafuer genau richtig -- die Warnung oben gilt nur fuer w > 0.
 
 Welches Oracle ein Lauf braucht, haengt an der Sprungart -- JUMP_ORACLES haelt
 die Zuordnung. Die Kategorie (real umsetzbar oder nicht) folgt daraus, wird
@@ -49,14 +54,15 @@ import config
 import namelists
 from estimators.formulas import FORMULAS
 from estimators.pipeline import PipelineEstimator
-from oracles.local_access import JumpCrawlOracle
+from oracles.local_access import CrawlOracle, JumpCrawlOracle
 from oracles.name_list import NameListOracle
 from oracles.random_subset import RandomSubsetOracle
 from sampling.durw import DurwSampler
 from sampling.jumps import jump_strategy, subset_percent
 from sampling.thinning import THINNINGS
 from weighting.schemes import (DurwJumpSetWeighting, DurwSigmaWeighting,
-                               DurwWeighting, UniformWeighting)
+                               DurwWeighting, InverseDegreeWeighting,
+                               UniformWeighting)
 
 # Jede Sprungart braucht ein Oracle, das sie bedienen kann. Eine spaeter
 # hinzukommende Sprungart, die ihr Ziel aus externen Daten simuliert, traegt
@@ -98,8 +104,19 @@ def build(
     history_jumps: bool = False,
     history_weight: float = 1.0,
     union_jumps: bool = False,
+    no_jumps: bool = False,
     aggregate=np.median,
 ) -> PipelineEstimator:
+    # `no_jumps`: der Grenzfall w -> 0, reiner Random Walk auf G_u (siehe
+    # sampling.durw). Jede Sprung-Option ist dann bedeutungslos -- wer sie
+    # trotzdem setzt, meint vermutlich etwas anderes als das, was passiert.
+    if no_jumps and (jump != "uniform" or jump_weight != config.DURW_JUMP_WEIGHT
+                     or history_jumps or union_jumps or jump_set_weighting
+                     or draw_burn_in or draw_limit):
+        raise ValueError(
+            "no_jumps schliesst jede Sprung-Option aus -- ohne Sprung haben "
+            "jump/jump_weight/history_jumps/union_jumps/jump_set_weighting/"
+            "draw_burn_in/draw_limit keine Wirkung mehr.")
     # `union_jumps`: Sprung gleichverteilt auf S u H, Absprungregel und Gewicht
     # des Originals (sampling.durw). Die Liste muss dafuer jeden Knoten nur
     # einmal enthalten -- das Oracle bekommt deshalb unique=True.
@@ -155,23 +172,35 @@ def build(
     # `burn_in` verwirft die ersten Schritte des Walks, `draw_burn_in` die
     # ersten Schritte *nach jedem Sprung* -- zwei verschiedene Dinge, die nicht
     # verwechselt werden duerfen. Letzteres kennt nur das NameListOracle.
-    oracle_cls = jump_oracle(jump)
-    if subset_percent(jump) is not None:
-        # Die Zufallsteilmenge hat weder Nieten noch eine Listenlaenge, und ein
-        # Burn-in nach dem Sprung ist dort nicht vorgesehen.
-        if draw_burn_in or draw_limit:
-            raise ValueError(f"jump={jump!r} kennt weder draw_burn_in noch "
-                             "draw_limit -- der Anteil steckt im Namen.")
-    elif jump != "uniform":
-        oracle_cls = partial(oracle_cls, burn_in=draw_burn_in,
-                             cost_miss=cost_miss, limit=draw_limit,
-                             # nur wenn gesetzt: sonst aendert sich der
-                             # Walk-Schluessel der vorhandenen Estimators
-                             **({"unique": True} if union_jumps else {}))
+    if no_jumps:
+        # Kein Sprung -> nie oracle.random_node(): das einfache CrawlOracle
+        # reicht, es braucht kein privilegiertes Wissen ueber V. Deshalb ist
+        # dieser Zweig REALIZABLE (s. estimators/__init__.py), staerker noch
+        # als jump="uniform" (COMPARISON).
+        oracle_cls = CrawlOracle
+    else:
+        oracle_cls = jump_oracle(jump)
+        if subset_percent(jump) is not None:
+            # Die Zufallsteilmenge hat weder Nieten noch eine Listenlaenge, und
+            # ein Burn-in nach dem Sprung ist dort nicht vorgesehen.
+            if draw_burn_in or draw_limit:
+                raise ValueError(f"jump={jump!r} kennt weder draw_burn_in noch "
+                                 "draw_limit -- der Anteil steckt im Namen.")
+        elif jump != "uniform":
+            oracle_cls = partial(oracle_cls, burn_in=draw_burn_in,
+                                 cost_miss=cost_miss, limit=draw_limit,
+                                 # nur wenn gesetzt: sonst aendert sich der
+                                 # Walk-Schluessel der vorhandenen Estimators
+                                 **({"unique": True} if union_jumps else {}))
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
     if not FORMULAS[formula].weighted:
         weighting = UniformWeighting()
+    elif no_jumps:
+        # w -> 0: pi(v) ~ deg_Gu(v) ohne Sigma-Term -- InverseDegreeWeighting
+        # liest denselben Sample.degree und ist hier exakt richtig (s.
+        # Modul-Docstring).
+        weighting = InverseDegreeWeighting()
     elif history_jumps:
         weighting = DurwSigmaWeighting(jump_weight)
     elif jump_set_weighting:
@@ -179,24 +208,35 @@ def build(
     else:
         weighting = DurwWeighting(jump_weight)
 
-    return PipelineEstimator(
+    if no_jumps:
+        # Ohne Sprung sind jump/w/hist/union bedeutungslos -- eigener,
+        # schmalerer Name statt des Astes unten (der bleibt fuer w>0 exakt
+        # wie bisher).
+        name = (f"durw__{formula}__nojump__{thinning}"
+                + (f"__m{margin}" if margin else ""))
+        sampler = DurwSampler(no_jumps=True, n_seeds=n_seeds, burn_in=burn_in)
+    else:
         # w nur dann im Namen, wenn es vom Default abweicht -- sonst hiessen
         # die Registry-Eintraege ohne w-Angabe anders als bisher. Fuer Laeufe
         # ueber die Registry ist der Name ohnehin kosmetisch (estimators.build()
         # ueberschreibt ihn), fuer Direktaufrufe aus einem Notebook nicht.
-        name=f"durw__{formula}__{jump}__{thinning}"
-             + (f"__n{draw_limit}" if draw_limit else "")
-             + ("__inS" if jump_set_weighting else "")
-             + (f"__hist{history_weight:g}" if history_jumps else "")
-             + ("__union" if union_jumps else "")
-             + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
-             + (f"__m{margin}" if margin else ""),
+        name = (f"durw__{formula}__{jump}__{thinning}"
+                + (f"__n{draw_limit}" if draw_limit else "")
+                + ("__inS" if jump_set_weighting else "")
+                + (f"__hist{history_weight:g}" if history_jumps else "")
+                + ("__union" if union_jumps else "")
+                + (f"__w{jump_weight:g}" if jump_weight != config.DURW_JUMP_WEIGHT else "")
+                + (f"__m{margin}" if margin else ""))
+        sampler = DurwSampler(jump=jump_strategy(jump), jump_weight=jump_weight,
+                              n_seeds=n_seeds, burn_in=burn_in,
+                              history_jumps=history_jumps,
+                              history_weight=history_weight,
+                              union_jumps=union_jumps)
+
+    return PipelineEstimator(
+        name=name,
         oracle_cls=oracle_cls,
-        sampler=DurwSampler(jump=jump_strategy(jump), jump_weight=jump_weight,
-                            n_seeds=n_seeds, burn_in=burn_in,
-                            history_jumps=history_jumps,
-                            history_weight=history_weight,
-                            union_jumps=union_jumps),
+        sampler=sampler,
         weighting=weighting,
         formula=FORMULAS[formula](margin=margin),
         thinning=thin,
