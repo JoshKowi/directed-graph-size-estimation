@@ -97,9 +97,19 @@ Wichtig fuer alles, was danach kommt: `Sample.degree` traegt hier den Grad in
 G_u, *nicht* den Ausgangsgrad wie bei RandomWalkSampler. InverseDegreeWeighting
 passt damit nicht zu DURW -- die richtige Gewichtung ist DurwWeighting.
 
+**`collect_nbrs` (fuer IE2).** Beide Nachbarschaften, die hier entstehen,
+werden normalerweise am Ende weggeworfen: die rohe Antwort des Oracles (`out`)
+und die eingefrorene G_u-Nachbarschaft (`adj`). Mit `collect_nbrs=True` bleiben
+sie als `self.observed` erhalten -- die Datengrundlage fuer
+estimators.formulas.IE2SetEstimator, das Treffer gegen die Vereinigung aller
+Nachbarschaften zaehlt statt Knoten-Kollisionen. Am Walk aendert das Flag
+nichts: es wird kein Knoten zusaetzlich abgefragt und keine Zufallszahl
+zusaetzlich gezogen, die Trajektorie ist bitgleich. Siehe sampling.observed.
+
 Schnittstelle:
     class DurwSampler(Sampler)  -- braucht oracle.seed_nodes()/neighbors()
                                    und, je nach Sprungart, oracle.random_node()
+        .observed                  -- nur mit collect_nbrs=True, s. dort
 """
 
 from __future__ import annotations
@@ -108,8 +118,11 @@ import math
 
 import config
 from oracles.base import BudgetExceeded
+import numpy as np
+
 from sampling.base import Sample, Sampler
 from sampling.jumps import JumpStrategy, UniformJump
+from sampling.observed import ObservedNeighborhoods
 
 
 def union_target(oracle, outside: list[int]) -> int:
@@ -181,6 +194,7 @@ class DurwSampler(Sampler):
         history_weight: float = 1.0,
         union_jumps: bool = False,
         no_jumps: bool = False,
+        collect_nbrs: bool = False,
     ) -> None:
         self.jump = jump or UniformJump()
         self.jump_weight = float(jump_weight)
@@ -211,6 +225,17 @@ class DurwSampler(Sampler):
             raise ValueError(
                 "no_jumps schliesst history_jumps und union_jumps aus -- beides "
                 "sind Sprungziel-Strategien, ohne Sprung bedeutungslos.")
+        # Nachbarschaften aufbewahren statt verwerfen -- s. Modul-Docstring.
+        self.collect_nbrs = bool(collect_nbrs)
+        if self.collect_nbrs and self.n_walks > 1:
+            # G_u wird je Fang neu aufgebaut (s. Klassen-Docstring), die
+            # Nachbarschaften mehrerer Faenge sind also verschiedene Graphen.
+            # Ein Index ueber die zusammengeklebte Trajektorie waere still
+            # falsch: Zeugenindizes aus Fang 1 gelten fuer Fang 2 nicht.
+            raise ValueError(
+                f"collect_nbrs braucht n_walks = 1, ist {self.n_walks}: G_u "
+                "wird je Fang neu aufgebaut, eine gemeinsame Nachbarschaft "
+                "ueber alle Faenge gibt es nicht.")
         self.name = f"durw_{self.jump.name}"
 
     def key(self) -> str:
@@ -219,14 +244,24 @@ class DurwSampler(Sampler):
                 f"|walks{self.n_walks}|burn{self.burn_in}")
         # Nur wenn eingeschaltet -- sonst bleibt der Schluessel der alten
         # Estimators unveraendert und ihre Walk-Gruppen stimmen weiter.
+        # `collect_nbrs` steht im Schluessel, obwohl es die Trajektorie *nicht*
+        # aendert. Grund: pipeline.estimate_group laesst den Walk vom ersten
+        # Estimator der Gruppe laufen. Duerfte eine Gruppe aufzeichnende und
+        # nicht aufzeichnende Varianten mischen, bekaeme IE2 je nach Reihenfolge
+        # ein observed = None. Der Schluessel trennt die Gruppen deshalb.
         return (base + (f"|hist{self.history_weight:g}" if self.history_jumps else "")
                 + ("|union" if self.union_jumps else "")
-                + ("|nojump" if self.no_jumps else ""))
+                + ("|nojump" if self.no_jumps else "")
+                + ("|nbrs" if self.collect_nbrs else ""))
 
     def sample(self, oracle) -> list[Sample]:
         w = self.jump_weight
         trace: list[Sample] = []
         current: list[Sample] = []
+        # Nur mit collect_nbrs belegt (s. Modul-Docstring). `raw` haelt die
+        # Antwort des Oracles als Slice-View in die CSR-Kantenliste -- keine
+        # kopierte Kante, kein zusaetzlicher Speicher.
+        raw: dict[int, object] = {}
         try:
             for walk in range(self.n_walks):
                 # Der letzte Walk laeuft bis zum Budgetende -- wie bei
@@ -269,6 +304,8 @@ class DurwSampler(Sampler):
                         # Eintraege entstehen nur fuer unbesuchte Knoten, und u
                         # steht ab jetzt in adj.
                         adj[u] = fresh + back.pop(u, [])
+                        if self.collect_nbrs:
+                            raw[u] = out
                         for v in fresh:
                             back.setdefault(v, []).append(u)
                         if self.history_jumps:
@@ -344,4 +381,13 @@ class DurwSampler(Sampler):
         except BudgetExceeded:
             pass
         trace.extend(current)   # der abgebrochene Fang zaehlt mit
+        if self.collect_nbrs:
+            # `adj` als int32-Arrays statt Python-Listen: 4 statt 36 Byte je
+            # Kante, und die Formeln rechnen ohnehin mit numpy. `adj` ist hier
+            # der Stand des *letzten* Fangs -- mit n_walks > 1 abgewiesen.
+            self.observed = ObservedNeighborhoods(
+                raw=raw,
+                gu={u: np.fromiter(vs, dtype=np.int32, count=len(vs))
+                    for u, vs in adj.items()},
+            )
         return trace

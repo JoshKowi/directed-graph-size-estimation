@@ -31,11 +31,19 @@ die *Abhaengigkeit zwischen* den Budgets: die Punkte einer Laufnummer sind
 danach genestet, nicht unabhaengig. Deshalb steht das in der Ergebnis-CSV
 (Spalte `nested`).
 
+Manche Formeln brauchen mehr als (Samples, Gewichte): IE2 zaehlt Treffer gegen
+die Vereinigung aller beobachteten Nachbarschaften und bekommt sie deshalb als
+`observed` durchgereicht -- das, was der Sampler unterwegs gesehen hat
+(sampling.observed). Der Sampler zeichnet das nur auf, wenn die Formel es
+verlangt (`EstimationFormula.needs_neighbors`); wer es nicht braucht, bekommt
+None und merkt nichts davon.
+
 Schnittstelle:
     class PipelineEstimator(Estimator)
+        .supports_nested -> bool   (False, sobald die Formel Nachbarn braucht)
         .walk_key -> str
         .run_walk(graph, budget, rng, checkpoints=()) -> (trace, oracle)
-        .evaluate(trace, cost, visits) -> EstimateResult
+        .evaluate(trace, cost, visits, observed=None) -> EstimateResult
         .estimate(graph, budget, rng) -> EstimateResult
         .estimate_nested(graph, budgets, rng) -> dict[int, EstimateResult]
     estimate_group(estimators, graph, budgets, rng)
@@ -96,6 +104,16 @@ class PipelineEstimator(Estimator):
         self.thinning = thinning or NoThinning()
         self.aggregate = aggregate
         self.budget_metric = budget_metric
+        if getattr(formula, "needs_neighbors", False):
+            # IE2 liest den Zeugen-Index der *ganzen* Trajektorie: fuer jeden
+            # Knoten in A den kleinsten und groessten Sample-Index, an dem er
+            # als Nachbar gesehen wurde (sampling.observed). Auf einem Praefix
+            # waere der groesste davon systematisch zu gross, der Margin wuerde
+            # zu viel auslassen und die Schaetzung still verschieben. Genestete
+            # Budgets sind deshalb ausgeschlossen -- der Runner splittet die
+            # Budget-Leiter dann von selbst auf (experiment.runner._can_nest),
+            # geteilte Walks bleiben moeglich.
+            self.supports_nested = False
 
     @property
     def walk_key(self) -> str:
@@ -117,7 +135,8 @@ class PipelineEstimator(Estimator):
 
     def estimate(self, graph: Graph, budget: int, rng: random.Random) -> EstimateResult:
         trace, oracle = self.run_walk(graph, budget, rng)
-        return self.evaluate(trace, oracle.cost(), oracle.visits)
+        return self.evaluate(trace, oracle.cost(), oracle.visits,
+                             self.sampler.observed)
 
     def estimate_nested(self, graph: Graph, budgets, rng: random.Random
                         ) -> dict[int, EstimateResult]:
@@ -127,6 +146,19 @@ class PipelineEstimator(Estimator):
         kumulativ, ein Zwischenstand muesste den ganzen Counter kopieren. Fuer
         die kleineren Budgets steht deshalb `visits=None`.
         """
+        if not self.supports_nested and len(set(int(b) for b in budgets)) > 1:
+            # Der Runner fragt vorher (experiment.runner._can_nest) und teilt
+            # die Budget-Leiter dann auf. Ein Direktaufruf -- aus einem
+            # Notebook, aus check_nested.py -- kaeme sonst still zu falschen
+            # Zahlen fuer die kleineren Budgets, und das ist genau die Sorte
+            # Fehler, die niemand bemerkt.
+            raise ValueError(
+                f"{self.name!r} kann mehrere Budgets nicht aus einem Lauf "
+                "ablesen (supports_nested = False). Je Budget einzeln "
+                "estimate() aufrufen. Betroffen sind Verfahren, deren Ziehung "
+                "vom Budget abhaengt (capture_recapture, dufs) und solche, "
+                "deren Formel die ganze Trajektorie braucht (IE2)."
+            )
         budgets = sorted({int(b) for b in budgets})
         top = budgets[-1]
         trace, oracle = self.run_walk(graph, top, rng, checkpoints=budgets[:-1])
@@ -135,11 +167,13 @@ class PipelineEstimator(Estimator):
         for snap in oracle.snapshots:
             snap = dict(snap)
             b, k = snap.pop("budget_abs"), snap.pop("n_samples")
-            out[b] = self.evaluate(trace[:k], snap, None)
-        out[top] = self.evaluate(trace, oracle.cost(), oracle.visits)
+            out[b] = self.evaluate(trace[:k], snap, None,
+                                   self.sampler.observed)
+        out[top] = self.evaluate(trace, oracle.cost(), oracle.visits,
+                                 self.sampler.observed)
         return out
 
-    def evaluate(self, trace, cost: dict, visits) -> EstimateResult:
+    def evaluate(self, trace, cost: dict, visits, observed=None) -> EstimateResult:
         """Aus einer (ggf. abgeschnittenen) Trajektorie eine Schaetzung machen."""
         subsets = self.thinning.apply(trace)
         weights = [self.weighting.weights(s) for s in subsets]
@@ -151,7 +185,8 @@ class PipelineEstimator(Estimator):
                               dtype=float)
         else:
             values = np.array(
-                [self.formula.compute(s, w) for s, w in zip(subsets, weights)],
+                [self.formula.compute(s, w, observed)
+                 for s, w in zip(subsets, weights)],
                 dtype=float,
             )
         valid = values[~np.isnan(values)]
@@ -165,7 +200,9 @@ class PipelineEstimator(Estimator):
                 "n_samples": len(trace),
                 "n_subsets": len(subsets),
                 "n_valid": int(valid.size),
-                **self.formula.extras(subsets, weights),
+                **(self.formula.extras(subsets, weights)
+                   if isinstance(self.formula, SetsFormula)
+                   else self.formula.extras(subsets, weights, observed)),
                 # Streuung der Einzelschaetzungen *innerhalb* eines Walks --
                 # im Vergleich zur Streuung ueber die Laeufe zeigt sie, ob das
                 # Thinning die Abhaengigkeit wirklich reduziert.
@@ -214,6 +251,12 @@ def estimate_group(estimators, graph: Graph, budgets, rng: random.Random
     slices = [(dict(s), s["budget_abs"], s["n_samples"]) for s in oracle.snapshots]
     slices.append((oracle.cost(), top, len(trace)))
 
+    # Die Nachbarschaften haengen am Walk, nicht an der Variante -- gezogen hat
+    # `owner`, also hat nur dessen Sampler sie aufgezeichnet. Der Walk-Schluessel
+    # sorgt dafuer, dass entweder alle oder keiner der Gruppe sie braucht
+    # (sampling.durw.key).
+    observed = owner.sampler.observed
+
     out = {}
     for cost, budget, k in slices:
         cost = {c: v for c, v in cost.items()
@@ -221,5 +264,5 @@ def estimate_group(estimators, graph: Graph, budgets, rng: random.Random
         part = trace[:k] if k < len(trace) else trace
         for i, est in enumerate(estimators):
             visits = oracle.visits if (i == 0 and budget == top) else None
-            out[(est.name, budget)] = est.evaluate(part, cost, visits)
+            out[(est.name, budget)] = est.evaluate(part, cost, visits, observed)
     return out

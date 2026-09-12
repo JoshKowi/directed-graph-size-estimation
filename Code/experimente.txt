@@ -479,3 +479,118 @@ python run_experiment.py --graphs gpt-4-io gpt-4o-io --views directed \
                  dufs-top-q__k100__b0__nojump__margin \
                  dufs-top-q__k1000__b0__nojump__margin \
     --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12
+
+===============================================================================
+ IE2 -- Kreuzkollisionen statt Knoten-Kollisionen
+===============================================================================
+Neue Formel (estimators.formulas.IE2SetEstimator, README-Abschnitt "IE2"): statt
+Wiederholungen s_i == s_j werden Treffer gegen A = Vereinigung aller
+beobachteten Nachbarschaften gezaehlt. A kostet kein Budget -- die Nachbarlisten
+sind beim Erstbesuch ohnehin bezahlt.
+
+Zwei Achsen im Namen:
+    ie2-   A als Set (Paper-Empfehlung)      ie2m-  A als Multiset (Gl. 24)
+    (ohne) A aus rohen Ausgangsnachbarn      __gu   A aus G_u
+
+Drei Dinge, die vor dem Lesen der Kurven klar sein muessen:
+
+  1. Ohne Margin ist IE2 auf einer RW-Stichprobe wertlos, nicht nur ungenau:
+     s_{i+1} ist per Konstruktion Nachbar von s_i, also liegt jedes Sample in A.
+     Die Spalte extra_in_a_frac zeigt das (gemessen: 1.000 ueberall).
+  2. Deshalb zuerst der m-Sweep (I1). Erwartet werden drei Regime --
+     Unterschaetzung, Plateau, Ueberschaetzung. Das Plateau ist der Schaetzwert;
+     alle weiteren Laeufe nehmen das dort gefundene m.
+  3. ie2m- kostet O(m) vektorisierte Durchlaeufe, ie2- kostet nichts in m. Auf
+     langen Traces (gpt-4-io: k bis 8,5 Mio.) deshalb ie2m- nur mit moderatem m.
+
+IE2 kann *keine* genesteten Budgets (--checkpoint-budgets): die Formel liest
+Zeugenindizes ueber die ganze Trajektorie, auf einem Praefix waere der groesste
+davon systematisch zu gross. Der Runner splittet die Leiter von selbst auf,
+--share-walks bleibt nutzbar und macht den Vergleich gepaart.
+
+-------------------------------------------------------------------------------
+ I0  Vorab: rechnet die Formel, was ihre Definition sagt?
+-------------------------------------------------------------------------------
+Beide Formen gegen eine naive Implementierung der Doppelsummen, dazu Konvergenz
+bei unabhaengigen WIS-Ziehungen und der m-Sweep am echten Graphen.
+
+python check_ie2.py
+python check_ie2.py --graph slashdot --views directed undirected --budget 0.05
+
+-------------------------------------------------------------------------------
+ I1  m-Sweep -- muss zuerst laufen, liefert das m fuer alles Weitere
+-------------------------------------------------------------------------------
+Ein Walk je Lauf, alle Margins darauf: der Sweep ist damit gepaart und zeigt die
+drei Regime ohne RNG-Rauschen.
+
+python run_experiment.py --graphs gpt-4-io gpt-4o-io --views directed \
+    --estimators wis-durw__nojump__margin \
+                 ie2-durw__nojump__margin0 \
+                 ie2-durw__nojump__margin5 \
+                 ie2-durw__nojump__margin20 \
+                 ie2-durw__nojump__margin50 \
+                 ie2-durw__nojump__margin200 \
+                 ie2-durw__nojump__margin1000 \
+                 ie2-durw__nojump__margin5000 \
+    --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12
+
+python plot_results.py --graphs gpt-4-io gpt-4o-io --match nojump --keep-order
+
+-------------------------------------------------------------------------------
+ I2  Set gegen Multiset, raw gegen gu -- die vier Ecken, bei festem m
+-------------------------------------------------------------------------------
+<M> = das Plateau-m aus I1 einsetzen.
+
+python run_experiment.py --graphs gpt-4-io gpt-4o-io --views directed \
+    --estimators wis-durw__nojump__margin \
+                 ie2-durw__nojump__margin<M> \
+                 ie2-durw__nojump__gu__margin<M> \
+                 ie2m-durw__nojump__margin<M> \
+                 ie2m-durw__nojump__gu__margin<M> \
+    --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12
+
+-------------------------------------------------------------------------------
+ I3  Kleine Budgets -- dort soll IE2 gewinnen
+-------------------------------------------------------------------------------
+Der eigentliche Grund fuer IE2: der Kollisions-Schaetzer hat bei kleinem Budget
+zu wenige Ereignisse, viele Sample-Sets liefern NaN (Spalte extra_n_valid).
+Erwartet wird nicht nur ein besserer Median, sondern vor allem weniger Streuung.
+
+python run_experiment.py --graphs gpt-4-io gpt-4o-io wiki --views directed \
+    --estimators wis-durw__nojump__margin \
+                 ie2-durw__nojump__margin<M> \
+                 ie2m-durw__nojump__margin<M> \
+    --budgets 0.0002 0.0005 0.001 0.002 0.005 --runs 20 --share-walks --jobs 12
+
+-------------------------------------------------------------------------------
+ I4  Mit Sprung: gleichverteilt und aus der Namensliste
+-------------------------------------------------------------------------------
+IE2 korrigiert die pi-Abweichung der Listenspruenge *nicht* (s.
+weighting.DurwJumpSetWeighting) -- es aendert nur, was gezaehlt wird. Der
+Vergleich zeigt deshalb, ob der Ereignisgewinn auch dort etwas bringt, wo die
+Gewichtung ohnehin nicht stimmt.
+
+python run_experiment.py --graphs gpt-4-io gpt-4o-io --views directed \
+    --estimators wis-durw__uniform__margin \
+                 ie2-durw__uniform__margin<M> \
+                 ie2m-durw__uniform__margin<M> \
+                 durwunion-top-q__b0__margin \
+                 ie2-durwunion-top-q__b0__margin<M> \
+                 ie2m-durwunion-top-q__b0__margin<M> \
+                 durw-top-q__b0__margin \
+                 ie2-durw-top-q__b0__margin<M> \
+    --budgets 0.001 0.005 0.01 0.05 --runs 10 --share-walks --jobs 12
+
+-------------------------------------------------------------------------------
+ I5  Ohne Namensliste: Sprung auf eine Zufallsteilmenge
+-------------------------------------------------------------------------------
+Laeuft auf jedem Graphen, auch ohne Namensindex -- der Weg, IE2 mit Sprung auf
+slashdot oder gpt-4 zu pruefen.
+
+python run_experiment.py --graphs slashdot --views directed undirected \
+    --estimators durw-rand10__b0__margin \
+                 ie2-durw-rand10__b0__margin<M> \
+                 ie2m-durw-rand10__b0__margin<M> \
+                 durwunion-rand10__b0__margin \
+                 ie2-durwunion-rand10__b0__margin<M> \
+    --budgets 0.001 0.005 0.01 0.05 0.10 --runs 10 --share-walks --jobs 12

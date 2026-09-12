@@ -28,6 +28,12 @@ Zwei Arten von Formeln:
                        Capture-Recapture: |S1|*|S2|/|S1 geschnitten S2| laesst
                        sich nicht je Set und danach mitteln.
 
+Die IE2-Formeln (Kurant et al., Abschnitt "Induced Edges") zaehlen keine
+Knoten-Kollisionen, sondern Treffer gegen die Vereinigung aller beobachteten
+Nachbarschaften. Sie brauchen dafuer mehr als (Samples, Gewichte) und setzen
+`needs_neighbors = True`; die Nachbarschaften kommen als `observed` vom Sampler
+(sampling.observed), die Mechanik steht dort.
+
 Schnittstelle:
     class EstimationFormula
         .name, .margin, .compute(samples, weights) -> float
@@ -45,6 +51,8 @@ Schnabel rechnen mit Mengen *verschiedener* Knoten -- dort gibt es keine
 saubere Gewichtung, siehe CrossCollisionEstimator.
     class CollisionCountEstimator(EstimationFormula)       -- k^2 / n_col
     class WISCollisionEstimatorKatzir(EstimationFormula)   -- gradkorrigiert (Katzir)
+    class IE2SetEstimator(EstimationFormula)               -- Kreuzkollisionen, A als Set
+    class IE2MultisetEstimator(IE2SetEstimator)            -- dito, A als Multiset (Gl. 24)
     FORMULAS: dict[str, type[EstimationFormula]]
 """
 
@@ -56,6 +64,7 @@ from collections.abc import Sequence
 import numpy as np
 
 from sampling.base import Sample
+from sampling.observed import A_SOURCES
 
 
 def _collisions(samples: Sequence[Sample], margin: int = 0) -> float:
@@ -117,6 +126,12 @@ class EstimationFormula(ABC):
     # Braucht die Formel echte Gewichte (WIS) oder rechnet sie mit w_i == 1?
     # Steht hier statt als Namensvergleich in den build()-Funktionen.
     weighted: bool = False
+    # Braucht die Formel die beobachteten Nachbarschaften? Steuert, ob der
+    # Sampler sie ueberhaupt aufbewahrt -- dasselbe Muster wie
+    # weighting.WeightingScheme.needs_degree, und aus demselben Grund: die
+    # build()-Funktionen leiten das Sampler-Flag daraus ab, statt Namen zu
+    # vergleichen. Nur die IE2-Formeln setzen es.
+    needs_neighbors: bool = False
 
     def __init__(self, margin: int = 0) -> None:
         # Safety Margin, s. _collisions(). 0 = aus, dann rechnet die Formel
@@ -124,10 +139,16 @@ class EstimationFormula(ABC):
         self.margin = int(margin)
 
     @abstractmethod
-    def compute(self, samples: Sequence[Sample], weights: np.ndarray) -> float:
-        """Schaetzwert fuer |V| aus gewichteten Samples."""
+    def compute(self, samples: Sequence[Sample], weights: np.ndarray,
+                observed=None) -> float:
+        """Schaetzwert fuer |V| aus gewichteten Samples.
 
-    def extras(self, subsets, weights) -> dict:
+        `observed` sind die vom Sampler aufgezeichneten Nachbarschaften
+        (sampling.observed) -- None, solange keine Formel der Gruppe sie
+        verlangt hat. Nur Formeln mit needs_neighbors lesen es.
+        """
+
+    def extras(self, subsets, weights, observed=None) -> dict:
         """Verfahrensspezifische Zwischenwerte fuer die Ergebnis-CSV
         (Praefix `extra_`). Default: keine."""
         return {}
@@ -146,7 +167,8 @@ class CollisionCountEstimator(EstimationFormula):
 
     name = "uis-collision"
 
-    def compute(self, samples: Sequence[Sample], weights: np.ndarray) -> float:
+    def compute(self, samples: Sequence[Sample], weights: np.ndarray,
+                observed=None) -> float:
         k = len(samples)
         # KORREKTUR gegenueber Kurant Eq.(5), die k^2/n_col schreibt.
         # Eq.(4) zaehlt ungeordnete Paare i<j, also E[n_col] = C(k,2)/N.
@@ -181,7 +203,8 @@ class WISCollisionEstimatorKatzir(EstimationFormula):
     name = "wis-col-katzir"
     weighted = True
 
-    def compute(self, samples: Sequence[Sample], weights: np.ndarray) -> float:
+    def compute(self, samples: Sequence[Sample], weights: np.ndarray,
+                observed=None) -> float:
         k = len(samples)
         pairs = _pair_count(k, self.margin)
         if pairs <= 0:
@@ -193,6 +216,197 @@ class WISCollisionEstimatorKatzir(EstimationFormula):
         w = np.asarray(weights, dtype=float)
         correction = w.mean() * (1.0 / w).mean()
         return pairs * correction / collisions
+
+
+class IE2SetEstimator(EstimationFormula):
+    """IE2 -- Kreuzkollisionen gegen die beobachteten Nachbarschaften.
+
+    Kurant/Butts/Markopoulou, Abschnitt "Induced Edges", Gl. 17/18 mit dem
+    SafetyMargin aus Gl. 24.
+
+    **Die Idee.** Alle anderen Formeln hier zaehlen Knoten-Kollisionen
+    (s_i == s_j). Ein Knoten wird bei WIS mit ~1/N wiedergetroffen, ein
+    *Nachbar* eines Knotens dagegen mit ~<k>/N. Zaehlt man statt
+    Wiederholungen die Treffer gegen
+
+        A = Vereinigung der N(s') ueber alle gezogenen s'
+
+    gibt es aus demselben Budget rund <k>-mal mehr verwertbare Ereignisse. Genau
+    das ist der Engpass der schwachen DURW-Laeufe: bei kleinen Budgets gibt es
+    zu wenige Kollisionen, viele Sample-Sets liefern NaN.
+
+    **Die Formel.** Mit n^xcol = sum_{s in S} 1{s in A} und Gl. 17:
+
+        N_hat = |A| * sum_s 1/w(s) / sum_s (1{s in A} / w(s))
+
+    Im Repo liefern die Weighting-Schemata schon den Kehrwert des
+    Stationaergewichts, `weights[i] == W_i == 1/w(s_i)`. Damit ist das
+
+        N_hat = |A| * sum_i W_i / sum_i (1{s_i in A} * W_i)
+
+    -- wie alle Schaetzer hier skaleninvariant in w, die Normierung kuerzt sich
+    heraus. Nachrechnen: E[sum_i W_i] = n*N/W und E[sum_i 1{s_i in A} W_i] =
+    n*|A|/W, also hebt sich alles bis auf N weg.
+
+    Nur *Ein*-Punkt-Korrekturen -- deshalb ist IE2 die vom Paper empfohlene
+    Variante. IE1 (Gl. 14, Schaetzung ueber die Graphdichte) braeuchte
+    1/(w(s_i)w(s_j)) und gibt damit einzelnen Kanten zwischen selten gezogenen
+    Knoten enormes Gewicht; die Autoren raten davon ab, hier ist sie deshalb
+    nicht umgesetzt.
+
+    **A als Set, nicht als Multiset.** Duplikate in A werden verworfen. Laut
+    den Simulationen der Autoren ist das nie schlechter und bei stark schiefen
+    Gradverteilungen oft deutlich besser -- und die Graphen hier sind schief.
+    Die Multiset-Fassung steht als IE2MultisetEstimator daneben, weil das Paper
+    genau *sie* fuer Random-Walk-Stichproben hinschreibt (s. dort).
+
+    **Warum der Margin hier nicht optional ist.** A wird aus derselben
+    Stichprobe gebaut. In einem Random Walk ist s_{i+1} per Konstruktion ein
+    Nachbar von s_i, also liegt praktisch *jedes* Sample in A, der Nenner wird
+    zu sum_i W_i, und N_hat kollabiert auf |A| -- "Zahl der gesehenen
+    Nachbarn", nicht |V|. Der SafetyMargin ist das Gegenmittel: beim Test, ob
+    s_i in A liegt, werden die Nachbarschaften aller Samples mit |j - i| <= m
+    ignoriert, und |A| sinkt entsprechend. `extra_in_a_frac` macht das Problem
+    in der Ergebnis-CSV sichtbar; liegt es ohne Margin nahe 1, ist das der
+    Beleg. Vorgehen in der Praxis: N_hat ueber einen Bereich von m plotten und
+    das Plateau nehmen (Registry: `...__margin<N>`).
+
+        far(i,v) := es gibt einen Zeugen von v ausserhalb [i-m, i+m]
+        Nenner   = sum_i W_i * 1{s_i in A und far(i, s_i)}
+        Zaehler  = sum_i W_i * |A_i^fern|
+
+    Beides exakt und ohne Doppelsumme -- wie, steht in
+    sampling.observed.NeighborIndex.
+
+    **m = 0 ist nicht Gl. 17 wortwoertlich.** Gl. 24 schreibt 1{|j-i| > m},
+    bei m = 0 fliegt also das Paar j = i heraus; Gl. 17 laesst es drin. Fuer den
+    Nenner ist das gleich (kein Knoten ist sein eigener Nachbar, Schlingen
+    entfernt graphs.graph._simplify beim Laden), im Zaehler unterscheiden sich
+    beide um sum_i W_i * deg(s_i). Hier wird konsequent Gl. 24 gerechnet, also
+    j = i ausgelassen: das Paar kann keine Kollision beitragen, und ein Paar,
+    das nicht gezaehlt wird, gehoert auch nicht in die Normierung. Dieselbe
+    Korrektur nimmt _pair_count() fuer die Knoten-Kollisionen vor. Der
+    Unterschied ist relativ O(1/n).
+
+    Ohne beobachtete Kreuzkollision (Nenner 0) ist keine Schaetzung moeglich
+    -> NaN, wie bei allen Formeln hier.
+    """
+
+    name = "ie2-xcol"
+    weighted = True
+    needs_neighbors = True
+
+    def __init__(self, margin: int = 0, a_source: str = "raw") -> None:
+        super().__init__(margin)
+        if a_source not in A_SOURCES:
+            raise ValueError(
+                f"a_source muss aus {A_SOURCES} sein, ist {a_source!r}")
+        # Aus welcher Nachbarschaft A gebaut wird -- die rohe Antwort des
+        # Oracles oder die eingefrorene G_u-Nachbarschaft. Beide sind bezahlt,
+        # welche besser ist, ist eine empirische Frage (s. sampling.observed).
+        self.a_source = a_source
+
+    def _index(self, samples, observed):
+        if observed is None:
+            # Laut melden statt still falsch rechnen -- derselbe Grund wie bei
+            # den Weighting-Schemata (weighting.schemes).
+            raise ValueError(
+                f"{self.name} braucht die beobachteten Nachbarschaften, bekam "
+                "aber observed=None. Der Sampler muss mit collect_nbrs=True "
+                "laufen -- die build()-Funktionen leiten das aus "
+                "EstimationFormula.needs_neighbors ab. Kommt die Stichprobe von "
+                "einem Sampler, der nichts aufzeichnet (UniformSampler, "
+                "RandomWalkSampler, NmmcSampler), passt diese Formel nicht."
+            )
+        return observed.index(samples, self.a_source)
+
+    def _terms(self, samples, weights, observed):
+        """(Zaehler, Nenner, Diagnose) -- die Trennung teilt sich mit extras()."""
+        idx = self._index(samples, observed)
+        if idx.n < 2 or idx.a_size == 0:
+            return 0.0, 0.0, {}
+        w = np.asarray(weights, dtype=float)
+        hit = idx.in_a & idx.far_self(self.margin)
+        a_far = idx.a_far(self.margin)
+        return (float(np.sum(w * a_far)), float(np.sum(w[hit])),
+                {"a_size": idx.a_size, "n_xcol": int(np.count_nonzero(hit)),
+                 "in_a_frac": float(np.mean(idx.in_a)),
+                 "a_far_mean": float(np.mean(a_far))})
+
+    def compute(self, samples: Sequence[Sample], weights: np.ndarray,
+                observed=None) -> float:
+        num, den, _ = self._terms(samples, weights, observed)
+        return float("nan") if den <= 0 else num / den
+
+    def extras(self, subsets, weights, observed=None) -> dict:
+        """Die Groessen fuer die Drei-Regime-Diagnose des Margins.
+
+        `in_a_frac` ohne Margin nahe 1 heisst: der Walk kollidiert nur mit sich
+        selbst (s. Klassen-Docstring). `n_xcol` ist die Zahl der gezaehlten
+        Ereignisse -- der eigentliche Grund fuer IE2, im Vergleich zu
+        `n_col` der Knoten-Kollisionen.
+        """
+        out: dict = {}
+        for part, w in zip(subsets, weights):
+            _, _, diag = self._terms(part, w, observed)
+            for k, v in diag.items():
+                out[k] = out.get(k, 0.0) + v
+        n = max(len(subsets), 1)
+        for k in ("in_a_frac", "a_far_mean"):
+            if k in out:
+                out[k] /= n
+        for k in ("a_size", "n_xcol"):
+            if k in out:
+                out[k] = int(out[k])
+        return out
+
+
+class IE2MultisetEstimator(IE2SetEstimator):
+    """IE2 mit A als *Multiset* -- Gl. 24 wortwoertlich.
+
+        N_hat = sum_{i,j} [deg(s_j) / w(s_i)] * 1{|j-i| > m}
+              / sum_{i,j} [1{s_i in N(s_j)} / w(s_i)] * 1{|j-i| > m}
+
+    Duplikate in A bleiben stehen: |A| = sum_j deg(s_j), und der Indikator
+    1{s_i in A} wird eine *Zaehlung* #{j : s_i in N(s_j)}. In dieser Form gilt
+    n^xcol == n^IE, die Kreuzkollisionen sind also genau die induzierten Kanten
+    -- der Grund, warum das Paper die Margin-Gleichung hier hinschreibt und
+    nicht fuer die Set-Form.
+
+    Sie steht neben IE2SetEstimator, weil beide Aussagen des Papers
+    gleichzeitig gelten: die Set-Form ist die *empfohlene* (aus den Simulationen
+    mit unabhaengigen WIS-Ziehungen), die Multiset-Form die fuer Random Walks
+    *hingeschriebene*. Welche auf diesen Graphen gewinnt, entscheidet der
+    Vergleich, nicht die Annahme.
+
+    Praktischer Unterschied im Aufwand: der Zaehler geht ueber Prefixsummen der
+    Grade, der Nenner braucht aber die Fenstertreffer und kostet damit O(m)
+    vektorisierte Durchlaeufe (sampling.observed.NeighborIndex.m_win). Fuer
+    grosse m ist die Set-Form die richtige Wahl -- deren Aufwand haengt nicht
+    von m ab.
+
+    Achtung bei a_source="raw": deg(s_j) ist dann der *rohe* Ausgangsgrad, nicht
+    `Sample.degree` (bei DURW der G_u-Grad). Die Formel liest es deshalb aus den
+    aufgezeichneten Nachbarschaften und nie aus dem Sample.
+    """
+
+    name = "ie2m-xcol"
+
+    def _terms(self, samples, weights, observed):
+        idx = self._index(samples, observed)
+        if idx.n < 2:
+            return 0.0, 0.0, {}
+        w = np.asarray(weights, dtype=float)
+        m = self.margin
+        # Zaehler: sum_i W_i * (D - D_Fenster(i)) -- alle Grade minus die im
+        # Fenster, ueber Prefixsummen.
+        pairs = float(np.sum(idx.deg)) - idx.d_win(m)
+        # Nenner: dieselbe Auslassung auf den Kreuzkollisionen.
+        xcol = idx.mult() - idx.m_win(m)
+        return (float(np.sum(w * pairs)), float(np.sum(w * xcol)),
+                {"a_size": idx.a_size, "n_xcol": int(np.sum(xcol)),
+                 "in_a_frac": float(np.mean(idx.in_a)),
+                 "a_far_mean": float(np.mean(pairs))})
 
 
 class SetsFormula(ABC):
@@ -443,4 +657,8 @@ SETS_FORMULAS: dict[str, type[SetsFormula]] = {
 FORMULAS: dict[str, type[EstimationFormula]] = {
     "uis-collision": CollisionCountEstimator,
     "wis-col-katzir": WISCollisionEstimatorKatzir,
+    # IE2: zaehlt Kreuzkollisionen statt Knoten-Kollisionen und braucht dafuer
+    # die beobachteten Nachbarschaften (needs_neighbors).
+    "ie2-xcol": IE2SetEstimator,
+    "ie2m-xcol": IE2MultisetEstimator,
 }

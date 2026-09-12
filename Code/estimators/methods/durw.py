@@ -19,7 +19,11 @@ Die austauschbaren Achsen:
     jump_weight -- w der Sprungregel (config.DURW_JUMP_WEIGHT)
     thinning    -- "none" | "simple" | "shifted"    (sampling.thinning)
     margin      -- Safety Margin wie dort (estimators.formulas). 0 = aus.
-    formula     -- "uis-collision" | "wis-col-katzir"
+    formula     -- "uis-collision" | "wis-col-katzir" | "ie2-xcol" | "ie2m-xcol"
+    a_source    -- nur fuer die IE2-Formeln: aus welcher Nachbarschaft die
+                   Menge A gebaut wird, "raw" (rohe Ausgangsnachbarn) oder
+                   "gu" (eingefrorene G_u-Nachbarschaft). Siehe
+                   sampling.observed.
 
 "wis-col-katzir" gehoert mit DurwWeighting zusammen: der Walk zieht
 proportional zu (w + deg_Gu), das Gewicht korrigiert genau das. Nicht mit
@@ -36,6 +40,14 @@ ist dafuer genau richtig -- die Warnung oben gilt nur fuer w > 0.
 Welches Oracle ein Lauf braucht, haengt an der Sprungart -- JUMP_ORACLES haelt
 die Zuordnung. Die Kategorie (real umsetzbar oder nicht) folgt daraus, wird
 aber wie im Repo ueblich erst in estimators/__init__.py vergeben.
+
+Die IE2-Formeln (estimators.formulas.IE2SetEstimator) zaehlen Treffer gegen die
+Vereinigung aller beobachteten Nachbarschaften statt Knoten-Kollisionen. Sie
+brauchen dafuer, dass der Sampler die Nachbarlisten aufbewahrt; das Flag dafuer
+wird aus `EstimationFormula.needs_neighbors` abgeleitet, genau wie `with_degree`
+aus `WeightingScheme.needs_degree`. Am Walk aendert es nichts, an der
+Gewichtung auch nicht -- IE2 ist `weighted`, bekommt also dasselbe
+Weighting-Schema wie "wis-col-katzir".
 
 Schnittstelle:
     JUMP_ORACLES: dict[str, type]
@@ -94,6 +106,7 @@ def build(
     step: int = 5,
     margin: int = 0,
     formula: str = "uis-collision",
+    a_source: str = "raw",
     jump_weight: float = config.DURW_JUMP_WEIGHT,
     n_seeds: int = 1,
     burn_in: int = 0,
@@ -194,6 +207,15 @@ def build(
                                  **({"unique": True} if union_jumps else {}))
     thin_cls = THINNINGS[thinning]
     thin = thin_cls() if thinning == "none" else thin_cls(step=step)
+    # Nur die IE2-Formeln brauchen die Nachbarlisten -- und nur sie kennen
+    # a_source. Ein a_source bei einer Formel, die ihn ignoriert, waere ein
+    # stiller Tippfehler; deshalb hier laut.
+    needs_nbrs = FORMULAS[formula].needs_neighbors
+    if not needs_nbrs and a_source != "raw":
+        raise ValueError(
+            f"a_source={a_source!r} hat bei formula={formula!r} keine Wirkung "
+            "-- A wird nur von den IE2-Formeln gebraucht.")
+    _a_tag = f"__{a_source}" if needs_nbrs else ""
     if not FORMULAS[formula].weighted:
         weighting = UniformWeighting()
     elif no_jumps:
@@ -212,15 +234,16 @@ def build(
         # Ohne Sprung sind jump/w/hist/union bedeutungslos -- eigener,
         # schmalerer Name statt des Astes unten (der bleibt fuer w>0 exakt
         # wie bisher).
-        name = (f"durw__{formula}__nojump__{thinning}"
+        name = (f"durw__{formula}{_a_tag}__nojump__{thinning}"
                 + (f"__m{margin}" if margin else ""))
-        sampler = DurwSampler(no_jumps=True, n_seeds=n_seeds, burn_in=burn_in)
+        sampler = DurwSampler(no_jumps=True, n_seeds=n_seeds, burn_in=burn_in,
+                              collect_nbrs=needs_nbrs)
     else:
         # w nur dann im Namen, wenn es vom Default abweicht -- sonst hiessen
         # die Registry-Eintraege ohne w-Angabe anders als bisher. Fuer Laeufe
         # ueber die Registry ist der Name ohnehin kosmetisch (estimators.build()
         # ueberschreibt ihn), fuer Direktaufrufe aus einem Notebook nicht.
-        name = (f"durw__{formula}__{jump}__{thinning}"
+        name = (f"durw__{formula}{_a_tag}__{jump}__{thinning}"
                 + (f"__n{draw_limit}" if draw_limit else "")
                 + ("__inS" if jump_set_weighting else "")
                 + (f"__hist{history_weight:g}" if history_jumps else "")
@@ -231,14 +254,16 @@ def build(
                               n_seeds=n_seeds, burn_in=burn_in,
                               history_jumps=history_jumps,
                               history_weight=history_weight,
-                              union_jumps=union_jumps)
+                              union_jumps=union_jumps,
+                              collect_nbrs=needs_nbrs)
 
     return PipelineEstimator(
         name=name,
         oracle_cls=oracle_cls,
         sampler=sampler,
         weighting=weighting,
-        formula=FORMULAS[formula](margin=margin),
+        formula=(FORMULAS[formula](margin=margin, a_source=a_source)
+                 if needs_nbrs else FORMULAS[formula](margin=margin)),
         thinning=thin,
         aggregate=aggregate,
     )

@@ -506,9 +506,15 @@ nachgeprüft **dieselbe Trajektorie** wie `durw-rand100` (10/10 Läufe).
   normalisierte Namen ab (NFC + casefold), dedupliziert wird also nach
   normalisiertem Namen — das kann ein Crawler auch. Selbst die eigene
   In-Grad-Liste von gpt4o_io hat dadurch Vielfachheiten bis 6.
-- **Zielmenge:** Nie besucht wird, was weder in S liegt noch von dort erreichbar
-  ist; die Schätzung läuft gegen |R|, nicht |V|. Gemessen (gerichtet, BFS von
-  S): Slashdot 100 % für jedes P, gpt4o_io 96–99 %, gpt4_io 99,5–99,8 %.
+- **Zielmenge — der teuerste Punkt.** σ-Masse liegt nur auf S ∪ H. Ein Knoten,
+  der weder in S liegt noch schon besucht wurde, trägt keine (bzw. nur über
+  beobachtete Rückkanten) und ist für den Kollisionsschätzer praktisch
+  unsichtbar. Die Schätzung erreicht |V| deshalb erst, wenn der Walk den
+  Graphen im Wesentlichen **abgedeckt** hat — eine viel härtere Bedingung als
+  beim Original, wo σ jeden Knoten von Anfang an trägt. Asymptotisch ist die
+  Obergrenze |R| (von S aus erreichbar; gemessen gerichtet: Slashdot 100 % für
+  jedes P, gpt4o_io 96–99 %, gpt4_io 99,5–99,8 %), bei endlichem Budget zählt
+  aber die Abdeckung, nicht |R|.
 - Nur für `b0`; Einträge für jede Listenquelle × Länge und für `rand<P>`.
 
 Befunde:
@@ -530,18 +536,37 @@ Befunde:
   | `durwhist-rand10` | 0,85 / 0,82 / 0,86 / 0,94 |
   | `durw-rand10` (naiv) | 1,01 / 1,02 / 1,01 / 1,01 |
 
-  Die Unterschätzung ist **Anlaufphase**: bei 5 × |V| liefert die ganze
-  Trajektorie 0,98, ihre zweite Hälfte allein 0,998–1,000 (je 3 Läufe, P = 1
-  und 10). 95 % der Knoten sind nach 15–20 % der Trajektorie besucht; die
-  frühen Samples stammen aus einer Kette, deren σ nur an einem Teil von V
-  hängt. Ein anderer Seed (anderes S) ändert daran nichts (0,86 / 0,87).
-  Die naive Variante trifft auf Slashdot trotzdem besser — sie ist nicht
-  reversibel, ihr Fehler hier aber klein.
-- **GPT-Graphen** (gerichtet, 3 Läufe, bis 5 % Budget — nur Rauchtest):
-  auf gpt4o_io fällt `durwunion-rand10` von 1,21 auf 1,02, `-rand50` von 1,12
-  auf 1,01; die Listenvarianten steigen dagegen (top-q 0,33 → 1,13, indeg
-  0,55 → 1,62), dasselbe Muster wie bei `durwhist`. Auf gpt4_io liegt alles
-  weit unter 1, auch das Original (0,39 bei 5 %).
+  Der Verlauf ist **nicht monoton**: erst über 1 (wie jede DURW-Variante bei
+  kleinem Budget), dann bis rund 0,84 bei 50 % Budget hinunter, dann zurück.
+  Er folgt der Abdeckung, nicht |R| (P = 10, gerichtet, je 3 Läufe):
+
+  | Budget | n̂/\|V\| | besucht \|H\|/\|V\| | S ∪ entdeckt |
+  |---|---|---|---|
+  | 0,05 | 0,924 | 0,045 | 0,630 |
+  | 0,2 | 0,862 | 0,178 | 0,834 |
+  | 0,5 | 0,838 | 0,424 | 0,934 |
+  | 1,0 | 0,872 | 0,737 | 0,980 |
+  | 2,0 | 0,944 | 0,972 | 0,998 |
+
+  Dass es **Anlaufphase** ist und kein bleibender Fehler: bei 5 × |V| liefert
+  die ganze Trajektorie 0,98, ihre zweite Hälfte allein 0,998–1,000 (je 3
+  Läufe, P = 1 und 10); ein anderer Seed (anderes S) ändert nichts
+  (0,86 / 0,87). Auf dem synthetischen Graphen, wo 10 × |V| für volle
+  Abdeckung reicht, steht es bei 0,999 (P = 10) bzw. 0,998 (P = 1) und ab
+  30 × bei 1,000 — auch bei |S| = 1 %. Die naive Variante trifft auf Slashdot
+  trotzdem früher; sie ist nicht reversibel, ihr Fehler hier aber klein.
+- **GPT-Graphen** (10 Läufe): auf gpt4o_io **gerichtet** trifft `-rand10` und
+  `-rand50` ab 0,5 % Budget (0,98–1,04 bis 20 %), die echten Listen steigen
+  dagegen durch 1 hindurch weiter (top-q 0,10 → 1,88, indeg 0,11 → 2,21 bei
+  20 %) — dasselbe Muster wie `durwhist`. **Ungerichtet** bleiben top-q bei
+  0,77 und indeg bei 0,79 über zwei Größenordnungen Budget flach. Auf gpt4_io
+  gerichtet liegt alles weit unter 1 (bei 20 %: `-rand50` 0,62, Original 0,69).
+  Bei 5,7 bzw. 6,5 Mio Knoten sind selbst 20 % Budget weit von der Abdeckung
+  entfernt, die diese Variante braucht: bei 10 % Budget hat der Walk auf
+  gpt4o_io 8 % der Knoten besucht. Das erklärt die flachen Werte der Grund-
+  tendenz nach; die Höhe des Plateaus (0,77 bei einer σ-Menge von 0,47–0,71)
+  erklärt es nicht — dort ist nichts eingelaufen, und die Zahlen sind
+  entsprechend wenig aussagekräftig.
 
 ### 3c. NMMC -- Umverteilung statt Sprung
 
@@ -804,8 +829,19 @@ aggregiert danach), `SetsFormula` rechnet einmal ueber alle Sets gemeinsam.
 | `schnabel` | ueber Sets | k Faenge (Schnabel 1938), `n_captures` frei | nein |
 | `cross` | ueber Sets | Kollisionen *zwischen* den Faengen, `n_captures` frei | nein |
 | `cross-wis` | ueber Sets | dasselbe mit Gradkorrektur | ja |
+| `ie2-xcol` | je Set | Kreuzkollisionen gegen A, A als **Set** | ja |
+| `ie2m-xcol` | je Set | dasselbe, A als **Multiset** (Gl. 24) | ja |
 
 Alle liefern NaN ohne beobachtete Kollision; alle kennen den `margin`.
+
+Die beiden IE2-Formeln sind die einzigen, die mehr sehen als
+`(Samples, Gewichte)`: sie zaehlen Treffer gegen
+`A = Vereinigung aller beobachteten Nachbarschaften` und bekommen die
+Nachbarlisten als dritten Parameter `observed` vom Sampler (Mechanik in
+`sampling/observed.py`). Sie setzen dafuer `needs_neighbors = True`; die
+`build()`-Funktionen leiten daraus `DurwSampler(collect_nbrs=True)` ab, genau
+wie `with_degree` aus `needs_degree`. A kostet kein Budget -- die Nachbarlisten
+sind beim Erstbesuch ohnehin bezahlt, der Sampler warf sie bisher nur weg.
 
 ### 7. Aggregation und Budget
 
@@ -839,6 +875,8 @@ die Namen:
 | `{nmmc-uni,wis-nmmc}__<indeg>__a<A>__margin` | Crawl / InDegreeCrawl | NMMC, `alpha`-Sweep | none + Margin | je nach Praefix |
 | `wis-durw__<jump>__w<W>__margin` | JumpCrawl | DURW (Sprunggewicht `W`) | none + Margin | `wis-col-katzir` |
 | `capture-recapture__durw-<jump>[__<formel>]` | JumpCrawl | DURW(`n_walks`) | by-walk | dieselben fuenf |
+| `{ie2,ie2m}-durw__<nojump\|uniform>[__gu]__margin[N]` | Crawl / JumpCrawl | DURW (`collect_nbrs`) | none + Margin | `ie2-xcol` / `ie2m-xcol` |
+| `{ie2,ie2m}-{durw,durwunion}-<quelle>[__gu]__b0__margin[N]` | NameList | DURW (`collect_nbrs`) | none + Margin | dieselben zwei |
 
 Das Kreuzprodukt laeuft ueber `<dead_end>` ∈ {`restart`, `backtrack`,
 `history`} bzw. `<jump>` ∈ {`uniform`}. Zwei Zahlen lassen sich im Namen ueberschreiben und stehen deshalb
@@ -1141,6 +1179,22 @@ REGISTRY = {
 }
 ```
 
+Braucht die neue Formel mehr als `(Samples, Gewichte)`, gibt es genau einen
+vorgesehenen Weg: das Attribut `Sampler.observed`. Es traegt, was der Sampler
+unterwegs gesehen hat und sonst wegwerfen wuerde -- bisher nur die
+Nachbarlisten fuer IE2 (`sampling/observed.py`). Drei Regeln dazu:
+
+1. Die Formel setzt `needs_neighbors = True`; die `build()`-Funktion leitet
+   daraus das Sampler-Flag ab, statt Formelnamen zu vergleichen.
+2. Das Flag gehoert in `Sampler.key()`, auch wenn es die Trajektorie nicht
+   aendert: `pipeline.estimate_group` laesst den Walk vom *ersten* Estimator
+   der Gruppe laufen, eine gemischte Gruppe bekaeme sonst je nach Reihenfolge
+   `observed = None`.
+3. Ein Estimator, dessen Formel die *ganze* Trajektorie braucht (IE2 liest
+   Zeugenindizes ueber alle Samples), setzt `supports_nested = False` --
+   das erledigt `PipelineEstimator.__init__` anhand von `needs_neighbors`.
+   `--checkpoint-budgets` waere sonst still falsch.
+
 ## Random-Walk-Varianten
 
 Zwei orthogonale Achsen, als Kreuzprodukt in der REGISTRY:
@@ -1238,6 +1292,99 @@ Sortieraufwand, der ohnehin anfaellt.
 nicht kombiniert (bei Schritt s laegen die Samples eines Sets schon s
 auseinander, ein Margin m verlangte dann s*m Schritte). Die REGISTRY setzt den
 Margin deshalb immer mit `thinning="none"`.
+
+### IE2 -- Kreuzkollisionen statt Knoten-Kollisionen
+
+Alle Formeln oben zaehlen Wiederholungen: `u_i == u_j`. Bei WIS wird ein Knoten
+mit ~1/N wiedergetroffen, ein *Nachbar* eines Knotens dagegen mit ~⟨k⟩/N.
+Zaehlt man statt Wiederholungen Treffer gegen
+
+    A = Vereinigung der N(s') ueber alle gezogenen s'
+
+gibt es aus demselben Budget rund ⟨k⟩-mal mehr verwertbare Ereignisse. Genau
+das ist der Engpass der schwachen DURW-Laeufe: bei kleinen Budgets gibt es zu
+wenige Kollisionen, viele Sample-Sets liefern NaN. Quelle: Kurant/Butts/
+Markopoulou, Abschnitt "Induced Edges", Gl. 17/18 mit dem Margin aus Gl. 24.
+
+Mit `weights[i] == W_i == 1/w(s_i)` (die Weighting-Schemata liefern schon den
+Kehrwert, s. oben) ist die Formel
+
+    n_hat = |A| * sum_i W_i / sum_i (1{s_i in A} * W_i)
+
+-- skaleninvariant in w, nur Ein-Punkt-Korrekturen. IE1 (Gl. 14, ueber die
+Graphdichte) braeuchte `1/(w(s_i)w(s_j))` und gibt damit einzelnen Kanten
+zwischen selten gezogenen Knoten enormes Gewicht; davon raten die Autoren ab,
+sie ist hier nicht umgesetzt.
+
+**A kostet kein Budget.** `DurwSampler` fragt jeden Knoten beim Erstbesuch
+ohnehin ab und baut daraus G_u -- beides wurde bezahlt und danach weggeworfen.
+`collect_nbrs=True` bewahrt es auf; die Trajektorie ist bitgleich (geprueft in
+`check_ie2.py`).
+
+**Zwei Achsen:**
+
+| | Bedeutung |
+|---|---|
+| `ie2-` | A als **Set**, Duplikate verworfen -- die vom Paper *empfohlene* Form (in deren Simulationen nie schlechter, bei schiefen Gradverteilungen oft deutlich besser) |
+| `ie2m-` | A als **Multiset**, `\|A\| = sum_j deg(s_j)` -- die fuer Random Walks *hingeschriebene* Form (Gl. 24), dort gilt `n_xcol == n_IE` |
+| (ohne Suffix) | A aus den rohen Ausgangsnachbarn |
+| `__gu` | A aus der eingefrorenen G_u-Nachbarschaft |
+
+Set + Margin ist dabei **keine Paper-Formel**: das Paper empfiehlt die
+Set-Form aus den Simulationen mit *unabhaengigen* WIS-Ziehungen und schreibt
+die Margin-Gleichung nur in Multiset-Form hin. Die Kombination ist hier exakt
+hergeleitet; deshalb laeuft Gl. 24 als Referenz daneben mit.
+
+**Ohne Margin ist IE2 auf einer RW-Stichprobe wertlos, nicht nur ungenau.** A
+wird aus derselben Stichprobe gebaut, und `s_{i+1}` ist per Konstruktion ein
+Nachbar von `s_i`. Also liegt praktisch *jedes* Sample in A, der Nenner wird zu
+`sum_i W_i`, und `n_hat` kollabiert auf `|A|` -- "Zahl der gesehenen
+Nachbarn", nicht |V|. Die Spalte `extra_in_a_frac` macht das sichtbar: sie
+liegt auf allen gemessenen Laeufen bei **1.000**.
+
+Der Margin laesst deshalb beim Test, ob `s_i` in A liegt, die Nachbarschaften
+aller Samples mit `|j - i| <= m` aus -- und `|A|` sinkt entsprechend mit,
+dieselbe Korrektur wie `C(k,2) -> P_m` oben. Vorgehen: `n_hat` ueber einen
+Bereich von m plotten und das Plateau nehmen.
+
+**Gemessen** auf Slashdot0811 gerichtet, 5 % Budget, ein Lauf,
+Schaetzung/|V| (`python check_ie2.py --graph Slashdot0811 --budget 0.05`):
+
+Ein Walk (k = 5 552 Samples), alle Auswertungen darauf -- der Vergleich ist
+also gepaart:
+
+| m | `ie2-durw__nojump` | `ie2m-durw__nojump` | Ereignisse Set | Ereignisse Multiset | `n_col` |
+|---|---|---|---|---|---|
+| 0 | 0.612 | 0.775 | 5 552 | 496 287 | 3 238 |
+| 1 | 0.757 | 0.928 | 5 392 | 485 825 | 3 238 |
+| 5 | 0.871 | 0.999 | 5 311 | 481 861 | 2 504 |
+| 20 | **0.965** | **1.035** | 5 244 | 478 417 | 2 348 |
+| 50 | 0.972 | 1.033 | 5 240 | 473 600 | 2 328 |
+| 200 | 0.976 | 1.032 | 5 230 | 448 188 | 2 214 |
+| 1000 | 0.972 | 1.030 | 5 159 | 324 933 | 1 639 |
+
+Die drei Regime aus dem Paper sind da: Unterschaetzung bei kleinem m, Plateau
+ab m ≈ 20, und ein Abbroeckeln der Ereignisse bei sehr grossem m (das dritte
+Regime, `n_hat -> unendlich`, erreicht dieser Walk nicht). `wis-durw__nojump__margin`
+liegt auf demselben Walk bei 1.069.
+
+Der Ereignisgewinn ist die Spalte `Ereignisse Multiset` gegen `n_col`: bei
+m = 20 sind es 478 417 gegen 2 348, also **204-mal mehr**. Die Set-Form kann
+dagegen nie mehr als k Ereignisse zaehlen (ein Indikator je Sample) -- ihr
+Gewinn liegt nicht in der Zahl, sondern darin, dass sie praktisch nie 0 wird;
+genau das ist bei kleinen Budgets der Grund fuer die NaN-Sets der
+Kollisions-Schaetzer.
+
+**Genestete Budgets gehen nicht** (`supports_nested = False`): IE2 liest fuer
+jeden Knoten in A den kleinsten und groessten Sample-Index, an dem er als
+Nachbar auftrat. Auf einem Praefix waere der groesste systematisch zu gross und
+der Margin liesse zu viel aus. Der Runner splittet die Budget-Leiter deshalb
+von selbst auf; `--share-walks` funktioniert weiter (eine Gruppe je Budget).
+
+**Aufwand:** die Set-Form ist O(n + |A|) und haengt *nicht* von m ab -- der
+Zeugen-Index ersetzt die Doppelsumme, Details in `sampling/observed.py`. Die
+Multiset-Form braucht O(m) vektorisierte Durchlaeufe fuer die Fenstertreffer;
+fuer grosse m auf langen Traces ist die Set-Form die richtige Wahl.
 
 ### Capture-Recapture: derselbe Bauplan
 

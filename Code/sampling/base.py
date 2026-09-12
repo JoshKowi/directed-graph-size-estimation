@@ -15,6 +15,7 @@ Schnittstelle:
     class Sampler
         .sample(oracle) -> list[Sample]   (laeuft, bis das Budget erschoepft ist)
         .key() -> str                     (gleiche Ziehung == gleicher Schluessel)
+        .observed -> ObservedNeighborhoods | None   (optional, s. dort)
 """
 
 from __future__ import annotations
@@ -73,6 +74,20 @@ class Sample:
 
 class Sampler(ABC):
     name: str = "sampler"
+
+    # Die unterwegs gesehenen Nachbarschaften -- nur gesetzt, wenn der Sampler
+    # danach gefragt wurde (DurwSampler(collect_nbrs=True)), sonst None.
+    #
+    # Der Kanal existiert fuer IE2 (estimators.formulas.IE2SetEstimator): jene
+    # Formel zaehlt nicht Knoten-Kollisionen, sondern Treffer gegen die
+    # Vereinigung aller beobachteten Nachbarschaften, und die kann nur der
+    # Sampler liefern -- dem Oracle darf danach niemand mehr etwas abfragen,
+    # das wuerde Budget kosten. Siehe sampling.observed.
+    #
+    # Bewusst ein Attribut und kein zweiter Rueckgabewert von sample(): sonst
+    # muesste jeder Sampler und jeder Aufrufer die neue Signatur mittragen,
+    # obwohl es nur zwei Sampler ueberhaupt etwas aufzuzeichnen haben.
+    observed = None
 
     @abstractmethod
     def sample(self, oracle) -> list[Sample]:

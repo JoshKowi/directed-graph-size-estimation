@@ -43,6 +43,7 @@ from functools import partial
 import config
 import namelists
 from estimators.base import Category, Estimator
+from estimators.formulas import FORMULAS
 from estimators.methods import (capture_recapture, deg_weighted_independent,
                                 dufs, durw, name_list_collision, nmmc,
                                 random_walk_collision, short_walk_independent,
@@ -332,6 +333,65 @@ for _src in sorted(namelists.SOURCES):
                             jump_set_weighting=True), _cat)
 del _src, _cat, _b, _n, _tag
 
+# -- IE2: Kreuzkollisionen statt Knoten-Kollisionen -----------------------
+# Alle Eintraege oben zaehlen Wiederholungen (s_i == s_j). IE2 zaehlt Treffer
+# gegen A = Vereinigung aller beobachteten Nachbarschaften: ein Nachbar wird mit
+# ~<k>/N getroffen, ein Knoten selbst nur mit ~1/N, also gibt es aus demselben
+# Budget rund <k>-mal mehr verwertbare Ereignisse (estimators.formulas.
+# IE2SetEstimator). A kostet nichts -- die Nachbarlisten sind beim Erstbesuch
+# ohnehin bezahlt, der Sampler warf sie bisher nur weg (sampling.observed).
+#
+# Zwei Achsen, beide aus der Vorlage und beide offen:
+#
+#   ie2-   A als Set (Duplikate verworfen) -- die vom Paper *empfohlene* Form.
+#   ie2m-  A als Multiset -- die fuer Random Walks *hingeschriebene* Form
+#          (Gl. 24). Dort gilt n^xcol == n^IE.
+#   __gu   A aus der eingefrorenen G_u-Nachbarschaft statt aus den rohen
+#          Ausgangsnachbarn. Konsistent mit dem Gewicht, aber kleineres A.
+#
+# Die Kategorie ist dieselbe wie bei der jeweiligen Kollisions-Variante: IE2
+# aendert nur, *was* gezaehlt wird, nicht welches Wissen der Lauf braucht.
+#
+# Immer mit thinning="none" und Margin -- ohne Margin ist IE2 auf einer
+# RW-Stichprobe wertlos, nicht nur ungenau (s. IE2SetEstimator, Abschnitt
+# "Warum der Margin hier nicht optional ist"). Der m-Sweep laeuft ueber die
+# generische Aufloesung "...__margin<N>" weiter unten und braucht keine
+# eigenen Eintraege.
+_IE2_FORMS = (("ie2", "ie2-xcol"), ("ie2m", "ie2m-xcol"))
+_IE2_A = (("", "raw"), ("__gu", "gu"))
+
+for _form, _f in _IE2_FORMS:
+    for _atag, _a in _IE2_A:
+        # Ohne Sprung -- die eigentliche Frage: verbessert IE2 den einzigen
+        # DURW, der ohne jede Kenntnis von V laeuft?
+        REGISTRY[f"{_form}-durw__nojump{_atag}__margin"] = Entry(
+            partial(durw.build, thinning="none", formula=_f, a_source=_a,
+                    margin=config.SAFETY_MARGIN, no_jumps=True),
+            Category.REALIZABLE)
+        # Gleichverteilter Sprung -- COMPARISON, als obere Schranke daneben.
+        REGISTRY[f"{_form}-durw__uniform{_atag}__margin"] = Entry(
+            partial(durw.build, jump="uniform", thinning="none", formula=_f,
+                    a_source=_a, margin=config.SAFETY_MARGIN),
+            _JUMP_CATEGORY["uniform"])
+        # Listenquellen, volle Liste und b = 0: die realisierbaren Varianten.
+        # Bewusst ohne den b- und n-Sweep der Kollisions-Eintraege -- gefragt
+        # ist die Wirkung von IE2, nicht die von IE2 x Burn-in x Listenlaenge.
+        # IE2 korrigiert die pi-Abweichung der Listenspruenge nicht (s.
+        # weighting.DurwJumpSetWeighting); die Gewichtung bleibt dieselbe wie
+        # bei durw-<quelle>__b0__margin bzw. durwunion-<quelle>__b0__margin.
+        for _src in sorted(namelists.SOURCES):
+            REGISTRY[f"{_form}-durw-{_src}{_atag}__b0__margin"] = Entry(
+                partial(durw.build, jump=_src, thinning="none", draw_burn_in=0,
+                        margin=config.SAFETY_MARGIN, formula=_f, a_source=_a),
+                _JUMP_CATEGORY[_src])
+            REGISTRY[f"{_form}-durwunion-{_src}{_atag}__b0__margin"] = Entry(
+                partial(durw.build, jump=_src, thinning="none", draw_burn_in=0,
+                        margin=config.SAFETY_MARGIN, formula=_f, a_source=_a,
+                        union_jumps=True),
+                _JUMP_CATEGORY[_src])
+
+del _form, _f, _atag, _a, _src
+
 # -- Sprung auf eine Zufallsteilmenge -------------------------------------
 # Dieselben drei Sprungvarianten wie bei den Namenslisten, nur trifft der
 # Sprung eine gleichverteilt gezogene Teilmenge S mit P % der Knoten
@@ -353,15 +413,24 @@ del _src, _cat, _b, _n, _tag
 #
 # Kategorie Vergleich: S aus V zu ziehen setzt voraus, V zu kennen.
 # Beliebige Anteile ("durwhist-rand2.5__b0__margin") loest build() auf.
+# Dieselben Varianten mit IE2 statt Knoten-Kollisionen ("ie2-durw-rand10__
+# b0__margin", "ie2m-durwunion-rand2.5__b0__margin", je auch mit "__gu"). Nur
+# fuer durw und durwunion -- durwset ist widerlegt und durwhist wird nicht mehr
+# gebraucht (s. oben), eine IE2-Fassung davon waere toter Ballast.
 _RAND_VARIANTS = {"durw": {}, "durwset": {"jump_set_weighting": True},
                   "durwhist": {"history_jumps": True},
                   "durwunion": {"union_jumps": True}}
+_IE2_RAND_VARIANTS = {"durw": {}, "durwunion": {"union_jumps": True}}
 
 
-def _rand_entry(variant: str, percent: float) -> Entry:
+def _rand_entry(variant: str, percent: float, formula: str = "wis-col-katzir",
+                a_source: str = "raw") -> Entry:
+    extra = ({"a_source": a_source}
+             if FORMULAS[formula].needs_neighbors else {})
     return Entry(partial(durw.build, jump=f"rand{percent:g}", thinning="none",
-                         margin=config.SAFETY_MARGIN, formula="wis-col-katzir",
-                         **_RAND_VARIANTS[variant]), Category.COMPARISON)
+                         margin=config.SAFETY_MARGIN, formula=formula,
+                         **extra, **_RAND_VARIANTS[variant]),
+                 Category.COMPARISON)
 
 
 for _p in config.JUMP_SUBSET_PERCENTS:
@@ -623,6 +692,13 @@ _NUMBERED_RE = re.compile(r"^(?P<base>.+__(?P<kind>" + "|".join(_NUMBERED)
 _RAND_RE = re.compile(r"^(?P<v>" + "|".join(_RAND_VARIANTS)
                       + r")-rand(?P<p>\d+(?:\.\d+)?)__b0__margin$")
 
+# Dasselbe mit IE2: "ie2-durw-rand10__b0__margin",
+# "ie2m-durwunion-rand2.5__gu__b0__margin"
+_IE2_RAND_RE = re.compile(r"^(?P<f>ie2m?)-(?P<v>"
+                          + "|".join(_IE2_RAND_VARIANTS)
+                          + r")-rand(?P<p>\d+(?:\.\d+)?)(?P<a>__gu)?"
+                          + r"__b0__margin$")
+
 # Dieselben beiden freien Achsen bei DUFS -- Anteil P *und* Walker-Zahl k:
 #   "dufs-rand2.5__k250__b0__margin", "dufsunion-rand10__k7__b0__margin",
 #   "dufs-rand10__k250__b0__nojump__margin"
@@ -642,6 +718,11 @@ def _lookup(name: str):
     m = _RAND_RE.match(name)
     if m and 0 < float(m.group("p")) <= 100:
         return _rand_entry(m.group("v"), float(m.group("p")))
+    m = _IE2_RAND_RE.match(name)
+    if m and 0 < float(m.group("p")) <= 100:
+        return _rand_entry(m.group("v"), float(m.group("p")),
+                           formula=f"{m.group('f')}-xcol",
+                           a_source="gu" if m.group("a") else "raw")
     m = _DUFS_RAND_RE.match(name)
     # dufsunion ohne Sprung gibt es nicht -- dufs.build() wuerde es ablehnen,
     # aber ein KeyError sagt hier deutlicher, dass der Name nicht existiert.
@@ -670,7 +751,9 @@ def build(name: str) -> Estimator:
             "abweichenden Safety Margin bzw. '...__shifted<N>'/'...__simple<N>' "
             "fuer eine abweichende Thinning-Schrittweite, "
             "'<durw|durwset|durwhist|durwunion>-rand<P>__b0__margin' fuer einen Sprung auf "
-            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100, sowie "
+            "eine Zufallsteilmenge mit P % der Knoten, 0 < P <= 100, "
+            "'<ie2|ie2m>-<durw|durwunion>-rand<P>[__gu]__b0__margin' fuer "
+            "dieselbe Teilmenge mit IE2, sowie "
             "'<dufs|dufsunion>-rand<P>__k<K>__b0[__nojump]__margin' und "
             "'wis-dufs__uniform__k<K>[__nojump]__margin' fuer eine abweichende "
             "Walker-Zahl K)."
