@@ -13,6 +13,7 @@ Beispiele:
     python plot_results.py --graphs gpt4_io --views undirected
     python plot_results.py --graphs gpt4_io --budgets 0.001 0.01 0.1
     python plot_results.py --graphs gpt4_io --match uniform__w --jump-rates
+    python plot_results.py --estimators c b a --keep-order   # Reihenfolge c, b, a statt a, b, c
 
 Je Graph *und* Seed entsteht ein eigenes Bild: verschiedene Seeds sind
 verschiedene Durchlaeufe des Experiments und gehoeren nicht in dieselbe
@@ -22,6 +23,7 @@ Spanne. Der Seed steht oben rechts im Bild.
 from __future__ import annotations
 
 import argparse
+import re
 
 import pandas as pd
 
@@ -44,6 +46,29 @@ def _budget_table(costs) -> str:
         lines.append(f"     {r.view:<12} {r.estimator:<34} {r.q_per_sample:8.2f} "
                      f"{r.share_draw:6.0%} {r.share_fetch:6.0%} {r.share_cache:6.0%}")
     return "\n".join(lines)
+
+
+def _estimator_order(present, args) -> list[str]:
+    """Reihenfolge der Estimators im Panel -- bestimmt auch die Farbslots.
+
+    Ohne --keep-order alphabetisch (Default, deterministisch unabhaengig von
+    der Aufrufreihenfolge). Mit --keep-order und --estimators die angegebene
+    Reihenfolge; mit --match die Reihenfolge der Muster, je Muster in der
+    Trefferfolge von `present`.
+    """
+    present = list(present)
+    if not args.keep_order:
+        return sorted(present)
+    if args.estimators:
+        return [e for e in args.estimators if e in present]
+    if args.match:
+        order: list[str] = []
+        for pat in args.match:
+            for e in present:
+                if e not in order and re.search(pat, e):
+                    order.append(e)
+        return order
+    return sorted(present)
 
 
 def main() -> None:
@@ -71,6 +96,10 @@ def main() -> None:
                    help="nur Budgets plotten, die fuer *jeden* gewaehlten Estimator "
                         "vorliegen (je Graph, Seed und Einstiegsknoten). Sonst zeigt "
                         "das Bild die Vereinigung, mit Luecken wo ein Estimator fehlt.")
+    p.add_argument("--keep-order", action="store_true",
+                   help="Estimators (und damit Farbe/Legendenreihenfolge) in der "
+                        "Reihenfolge von --estimators bzw. --match plotten, statt "
+                        "alphabetisch. Ohne --estimators/--match wirkungslos.")
     args = p.parse_args()
 
     df = results_io.load_results(seed=args.seed, start=args.start_node)
@@ -124,7 +153,7 @@ def main() -> None:
             views = [v for v in VIEW_TITLES if (rows["view"] == v).any()]
             plot_comparison(
                 rows, graph_name=name,
-                estimators=sorted(rows["estimator"].unique()), views=views,
+                estimators=_estimator_order(rows["estimator"].unique(), args), views=views,
                 title=f"{config.graph_label(name)}: spread of size estimates "
                       "by edge view",
                 path=path, note=note, jump_rates=args.jump_rates)
