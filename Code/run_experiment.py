@@ -34,6 +34,12 @@ Budgets ergaenzt die Datei nur um das Fehlende. `--replace` erzwingt das
 Neurechnen, `--deprecate` schiebt alles Vorhandene beiseite (fuer Aenderungen,
 die den Verlauf aendern).
 
+Jede fertige (Budget, Estimator)-Gruppe landet sofort in der CSV, nicht erst
+am Ende des Laufs (siehe experiment/runner.py) -- bricht der Prozess vorher ab
+(OOM, SLURM-Timeout), sind nur die noch nicht fertigen Gruppen weg. Ein
+erneuter Aufruf mit denselben Argumenten rechnet dank `skip_keys` nur das
+Fehlende nach.
+
 `--start-node` waehlt den Einstiegsknoten des Crawls (Default: der erste aus
 config.SEED_NODES, bei den GPT-Basen "Vannevar Bush"); `--start-node all`
 rechnet alle hinterlegten nacheinander. Jeder Einstieg landet in eigenen
@@ -282,6 +288,7 @@ def main() -> None:
             start_nodes=starts,
             skip_keys=set() if args.replace else skip,
             code=code,
+            replace=args.replace,
             log=lambda m: print(m, flush=True),
         )
         # Je Einstiegsknoten eine eigene Datei: verschiedene Einstiege sind
@@ -290,9 +297,17 @@ def main() -> None:
             part = df[df["start_node"] == start] if start is not None else df
             if part.empty:
                 continue
-            save = (results_io.save_results if args.replace
-                    else results_io.append_results)
-            print("  ->", save(part, name, seed=args.seed, start=start))
+            # save_results (voller Overwrite) war hier frueher der Weg fuer
+            # --replace -- falsch, sobald --estimators/--budgets nur eine
+            # Teilmenge auswaehlt: es ueberschrieb die ganze Datei mit genau
+            # dieser Teilmenge und loeschte damit jede andere Zeile. Mit
+            # inkrementellem Schreiben (experiment.runner) steht ohnehin
+            # schon alles auf der Platte -- dieser Aufruf ist der Idempotenz
+            # wegen noch da, muss aber dieselbe Ersetzen-nur-den-Schluessel-
+            # Regel befolgen wie dort.
+            print("  ->", results_io.append_results(
+                part, name, seed=args.seed, start=start,
+                replace_existing=args.replace))
             if visits is not None:
                 vpart = (visits[visits["start_node"] == start]
                          if start is not None else visits)

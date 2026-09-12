@@ -159,22 +159,39 @@ def load_one(graph_name: str, kind: str = "estimates", seed: int | None = None,
 
 
 def append_results(df: pd.DataFrame, graph_name: str, kind: str = "estimates",
-                   seed: int | None = None, start=None) -> Path:
+                   seed: int | None = None, start=None,
+                   replace_existing: bool = False) -> Path:
     """Neue Zeilen an die vorhandene Datei anhaengen, ohne Dubletten.
 
     Vorhandene Zeilen gewinnen: was schon gerechnet wurde, bleibt stehen. Das
     ist der Sinn der Uebung -- ein zweiter Aufruf mit denselben Parametern
     darf die Datei nicht veraendern.
+
+    `replace_existing=True` dreht das um: neue Zeilen gewinnen, vorhandene mit
+    demselben Schluessel fliegen raus. Fuer `run_experiment.py --replace` beim
+    inkrementellen Schreiben (experiment.runner) -- dort wird jede Gruppe
+    einzeln geschrieben, sobald sie fertig ist, nicht erst die ganze
+    Ergebnis-Tabelle am Laufende; ohne diese Umkehr wuerden die frisch
+    berechneten Werte gegen die alten verlieren, die eigentlich ersetzt
+    werden sollen.
     """
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = _path(graph_name, kind, seed, start)
     old = _read_csv(path)
-    if not old.empty and not df.empty:
-        known = run_keys(old)
-        if known and all(k in df.columns for k in RUN_KEYS):
-            mask = [tuple(r) not in known
-                    for r in df[list(RUN_KEYS)].itertuples(index=False, name=None)]
-            df = df[mask]
+    if not old.empty and not df.empty and all(k in df.columns for k in RUN_KEYS):
+        if replace_existing:
+            if all(k in old.columns for k in RUN_KEYS):
+                new_keys = set(df[list(RUN_KEYS)]
+                               .itertuples(index=False, name=None))
+                mask = [tuple(r) not in new_keys
+                        for r in old[list(RUN_KEYS)].itertuples(index=False, name=None)]
+                old = old[mask]
+        else:
+            known = run_keys(old)
+            if known:
+                mask = [tuple(r) not in known
+                        for r in df[list(RUN_KEYS)].itertuples(index=False, name=None)]
+                df = df[mask]
     combined = pd.concat([old, df], ignore_index=True) if not old.empty else df
     if "nested" in combined.columns:      # aeltere Zeilen kannten die Spalte nicht
         combined["nested"] = combined["nested"].fillna(False).astype(bool)

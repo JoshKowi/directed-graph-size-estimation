@@ -63,10 +63,22 @@ bei den grossen Graphen zig Mio Zeilen und eine mehrere GB grosse Zwischen-
 Liste im RAM -- der CLI-Schalter dafuer ist `--visits`, aus gutem Grund
 opt-in.
 
+Jede fertige (Budget, Estimator)-Gruppe wird sofort an die Ziel-CSV angehaengt
+(experiment.results.append_results), nicht erst am Ende des ganzen Laufs --
+bricht der Prozess vorher ab (OOM, SLURM-Timeout, Absturz), sind nur die
+Gruppen weg, die *danach* noch drangewesen waeren, nicht die schon fertigen.
+Der Rueckgabewert `results_df` bleibt trotzdem der vollstaendige Frame; der
+Aufruf von append_results/save_results am Ende in run_experiment.py findet
+dadurch nur noch bereits geschriebene Zeilen vor und aendert nichts mehr --
+er bleibt fuer den Fall stehen, dass hier mal ein anderer Aufrufer ohne
+inkrementelles Schreiben landet. `replace=True` (aus `--replace`) kehrt die
+Dublettenregel fuer diese Zwischenschreibvorgaenge um: neue Werte ersetzen
+alte mit demselben Schluessel, statt dass die alten stehen bleiben.
+
 Schnittstelle:
     run_graph(graph, estimators, budgets, n_runs, seed, views, collect_visits,
               n_jobs, nested_budgets, share_walks, start_nodes, skip_keys, code,
-              log) -> (results_df, visits_df | None)
+              replace, log) -> (results_df, visits_df | None)
 """
 
 from __future__ import annotations
@@ -84,6 +96,7 @@ import config
 import estimators as estimator_registry
 from estimators import pipeline
 from estimators.base import Estimator
+from experiment import results as results_io
 from graphs.graph import Graph
 from graphs.views import build_view
 from oracles import random_subset
@@ -210,6 +223,7 @@ def run_graph(
     start_nodes=None,
     skip_keys=None,
     code: str | None = None,
+    replace: bool = False,
     log=print,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     global _VIEW, _COLLECT_VISITS
@@ -334,6 +348,11 @@ def run_graph(
                 if len(pending[key]) == wanted.get(key, n_runs):
                     done += 1
                     grp = pending.pop(key)
+                    # sofort auf die Platte, nicht erst am Ende von run_graph --
+                    # s. Modul-Docstring, Absatz zu Absturzsicherheit.
+                    results_io.append_results(
+                        pd.DataFrame(grp), graph.name, seed=seed, start=start,
+                        replace_existing=replace)
                     med = pd.Series([g["estimate"] for g in grp]).median()
                     secs = sum(g["seconds"] for g in grp)
                     steps = sum(g.get("extra_n_samples", 0) or 0 for g in grp)
